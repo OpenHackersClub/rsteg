@@ -1,0 +1,32 @@
+# Cargo
+target/
+Cargo.lock.bak
+*.rs.bk
+
+# Workspace scratch
+.tmp/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+.idea/
+.vscode/
+*~
+
+# OS/native debug
+*.pdb
+*.dSYM/
+
+# Fuzz artifacts (corpus seeds are checked in; crashes are not)
+fuzz/target/
+fuzz/artifacts/
+
+# Local environment
+.env
+.env.local
+
+# Bench harness scratch
+target/rsteg-bench-corpus/

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rsteg-core",
+    "crates/rsteg-bmp",
+    "crates/rsteg-web",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/debuggingfuture/rsteg"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
