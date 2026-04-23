@@ -37,6 +37,26 @@ pub enum Error {
     DensityOutOfRange(u8),
     /// Permuted scheme requested without a PRNG seed in `opts.seed`.
     PermutationSeedRequired,
+
+    // -- Crypto (encoded for completeness; only emitted when a CryptoScheme
+    //    impl is registered). Kept in the central enum per spec 04.
+    /// AEAD authentication failure. Sole failure mode for any encrypted open —
+    /// the extract path must not distinguish "wrong passphrase" from "tampered
+    /// ciphertext" from "malformed inner header" (spec 06 §"Open flow"). The
+    /// timing test in `rsteg-crypto-aead/tests/timing.rs` asserts this.
+    BadPassphrase,
+    /// File header says `flags.encrypted = 1` but caller supplied no passphrase.
+    PassphraseRequired,
+    /// Caller supplied a passphrase but file is plaintext. CLI hints the user
+    /// to omit `--password`.
+    UnexpectedPassphrase,
+    /// Inner crypto header has an unknown KDF id or version. Single variant so
+    /// the error surface doesn't leak which field tripped (spec 06).
+    KdfParams {
+        detail: &'static str,
+    },
+    /// OS entropy source is unavailable (hard stop, no soft-fallback).
+    RngUnavailable,
 }
 
 impl fmt::Display for Error {
@@ -60,6 +80,13 @@ impl fmt::Display for Error {
             Self::PermutationSeedRequired => {
                 f.write_str("permuted scheme requires EmbedOpts/ExtractOpts::seed")
             }
+            Self::BadPassphrase => f.write_str("authentication failure (bad passphrase or tampered ciphertext)"),
+            Self::PassphraseRequired => f.write_str("file is encrypted; --password is required"),
+            Self::UnexpectedPassphrase => {
+                f.write_str("file is plaintext; --password was supplied but not needed")
+            }
+            Self::KdfParams { detail } => write!(f, "unsupported KDF parameters: {detail}"),
+            Self::RngUnavailable => f.write_str("OS random number generator unavailable"),
         }
     }
 }

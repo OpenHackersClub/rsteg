@@ -4,6 +4,7 @@ members = [
     "crates/rsteg-core",
     "crates/rsteg-bmp",
     "crates/rsteg-wav",
+    "crates/rsteg-crypto-aead",
     "crates/rsteg-web",
 ]
 

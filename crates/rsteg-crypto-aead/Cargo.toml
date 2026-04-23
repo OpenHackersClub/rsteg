@@ -1,0 +1,18 @@
+[package]
+name = "rsteg-crypto-aead"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "XChaCha20-Poly1305 + Argon2id AEAD scheme for rsteg."
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core      = { path = "../rsteg-core" }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+argon2          = { version = "0.5", default-features = false, features = ["alloc"] }
+zeroize         = { version = "1", default-features = false, features = ["alloc"] }
+getrandom       = { version = "0.2", default-features = false }
