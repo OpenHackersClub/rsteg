@@ -7,6 +7,7 @@ members = [
     "crates/rsteg-crypto-aead",
     "crates/rsteg-png",
     "crates/rsteg-cli",
+    "crates/rsteg-bench",
     "crates/rsteg-web",
 ]
 

@@ -1,0 +1,25 @@
+[package]
+name = "rsteg-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Benchmark harness for rsteg (dev-only)."
+publish = false
+
+[[bin]]
+name = "rsteg-bench"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core        = { path = "../rsteg-core" }
+rsteg-bmp         = { path = "../rsteg-bmp" }
+rsteg-wav         = { path = "../rsteg-wav" }
+rsteg-png         = { path = "../rsteg-png" }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead" }
+miniz_oxide       = { version = "0.8", default-features = false, features = ["with-alloc"] }
+lexopt            = "0.3"
