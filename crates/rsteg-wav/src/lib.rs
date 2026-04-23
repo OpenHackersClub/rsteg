@@ -12,6 +12,7 @@
 #![deny(unsafe_code)]
 
 use rsteg_core::{
+    prng::{shuffle, Prng},
     BitReader, BitWriter, Density, EmbedOpts, Error, ExtractOpts, FormatAdapter, PayloadHeader,
 };
 
@@ -143,14 +144,24 @@ fn embedding_byte_indices(layout: &WavLayout) -> Vec<usize> {
     }
 }
 
-fn embed_linear(
+fn indices_for(layout: &WavLayout, permuted_seed: Option<u64>) -> Vec<usize> {
+    let mut idxs = embedding_byte_indices(layout);
+    if let Some(seed) = permuted_seed {
+        let mut prng = Prng::new(seed);
+        shuffle(&mut prng, &mut idxs);
+    }
+    idxs
+}
+
+fn embed_scheme(
     carrier: &[u8],
     framed: &[u8],
     density: Density,
+    permuted_seed: Option<u64>,
     out: &mut Vec<u8>,
 ) -> Result<(), Error> {
     let layout = parse_wav(carrier)?;
-    let idxs = embedding_byte_indices(&layout);
+    let idxs = indices_for(&layout, permuted_seed);
 
     let avail_bytes = (idxs.len() as u64 * u64::from(density.bits())) / 8;
     let needed_units = framed
@@ -191,9 +202,14 @@ fn embed_linear(
     Ok(())
 }
 
-fn extract_linear(stego: &[u8], density: Density, out: &mut Vec<u8>) -> Result<(), Error> {
+fn extract_scheme(
+    stego: &[u8],
+    density: Density,
+    permuted_seed: Option<u64>,
+    out: &mut Vec<u8>,
+) -> Result<(), Error> {
     let layout = parse_wav(stego)?;
-    let idxs = embedding_byte_indices(&layout);
+    let idxs = indices_for(&layout, permuted_seed);
     let scratch: Vec<u8> = idxs.iter().map(|&i| stego[i]).collect();
 
     if scratch.len() * usize::from(density.bits()) < PayloadHeader::SIZE * 8 {
@@ -253,13 +269,14 @@ impl FormatAdapter for WavAdapter {
         out: &mut Vec<u8>,
     ) -> Result<(), Error> {
         match opts.scheme {
-            None | Some("wav-lsb-linear") => embed_linear(carrier, framed, opts.density, out),
-            Some(other) => Err(Error::FormatUnsupported {
+            None | Some("wav-lsb-linear") => embed_scheme(carrier, framed, opts.density, None, out),
+            Some("wav-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                embed_scheme(carrier, framed, opts.density, Some(seed), out)
+            }
+            Some(_) => Err(Error::FormatUnsupported {
                 id: "wav",
-                reason: match other {
-                    "wav-lsb-permuted" => "permuted scheme not implemented yet",
-                    _ => "unknown scheme",
-                },
+                reason: "unknown scheme",
             }),
         }
     }
@@ -272,13 +289,14 @@ impl FormatAdapter for WavAdapter {
     ) -> Result<(), Error> {
         let density = opts.density.unwrap_or(Density::Low);
         match opts.scheme {
-            None | Some("wav-lsb-linear") => extract_linear(stego, density, out),
-            Some(other) => Err(Error::FormatUnsupported {
+            None | Some("wav-lsb-linear") => extract_scheme(stego, density, None, out),
+            Some("wav-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                extract_scheme(stego, density, Some(seed), out)
+            }
+            Some(_) => Err(Error::FormatUnsupported {
                 id: "wav",
-                reason: match other {
-                    "wav-lsb-permuted" => "permuted scheme not implemented yet",
-                    _ => "unknown scheme",
-                },
+                reason: "unknown scheme",
             }),
         }
     }
