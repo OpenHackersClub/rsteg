@@ -58,6 +58,7 @@ fn run(density: Density, secret: &[u8]) {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density,
+        seed: None,
     };
 
     let stego = BMP_ADAPTER.embed(&cover, &framed, &opts).unwrap();
@@ -66,6 +67,7 @@ fn run(density: Density, secret: &[u8]) {
         density: Some(density),
         skip_header: false,
         raw_bit_count: None,
+        seed: None,
     };
     let extracted = BMP_ADAPTER.extract(&stego, &ex_opts).unwrap();
 
@@ -104,6 +106,7 @@ fn main() {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let mut stego = BMP_ADAPTER.embed(&cover, &framed, &opts).unwrap();
     // At density 1, one pixel byte = one embedding unit.
@@ -115,6 +118,7 @@ fn main() {
         density: Some(Density::Low),
         skip_header: false,
         raw_bit_count: None,
+        seed: None,
     };
     match BMP_ADAPTER.extract(&stego, &ex_opts) {
         Ok(_) => println!("  UNEXPECTED: extract succeeded despite tampering"),

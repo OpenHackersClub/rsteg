@@ -71,6 +71,7 @@ fn roundtrip_with(cover: &[u8], body: &[u8], density: Density) {
             &EmbedOpts {
                 scheme: Some("wav-lsb-linear"),
                 density,
+                seed: None,
             },
         )
         .unwrap();
@@ -83,6 +84,7 @@ fn roundtrip_with(cover: &[u8], body: &[u8], density: Density) {
                 density: Some(density),
                 skip_header: false,
                 raw_bit_count: None,
+                seed: None,
             },
         )
         .unwrap();
@@ -149,6 +151,7 @@ fn over_capacity_reports_payload_too_large() {
             &EmbedOpts {
                 scheme: Some("wav-lsb-linear"),
                 density: Density::Low,
+                seed: None,
             },
         )
         .unwrap_err();
@@ -169,6 +172,7 @@ fn cross_format_refused() {
             &EmbedOpts {
                 scheme: Some("wav-lsb-linear"),
                 density: Density::Low,
+                seed: None,
             },
         )
         .unwrap_err();
@@ -188,6 +192,7 @@ fn plaintext_tamper_trips_body_crc() {
             &EmbedOpts {
                 scheme: Some("wav-lsb-linear"),
                 density: Density::Low,
+                seed: None,
             },
         )
         .unwrap();
@@ -205,6 +210,7 @@ fn plaintext_tamper_trips_body_crc() {
                 density: Some(Density::Low),
                 skip_header: false,
                 raw_bit_count: None,
+                seed: None,
             },
         )
         .unwrap_err();
@@ -262,6 +268,7 @@ fn ancillary_chunk_preserved_verbatim() {
             &EmbedOpts {
                 scheme: Some("wav-lsb-linear"),
                 density: Density::Low,
+                seed: None,
             },
         )
         .unwrap();

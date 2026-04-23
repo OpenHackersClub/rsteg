@@ -35,6 +35,8 @@ pub enum Error {
     BodyCrcMismatch,
     /// Density value outside of 1..=4.
     DensityOutOfRange(u8),
+    /// Permuted scheme requested without a PRNG seed in `opts.seed`.
+    PermutationSeedRequired,
 }
 
 impl fmt::Display for Error {
@@ -55,6 +57,9 @@ impl fmt::Display for Error {
             Self::HeaderReservedBitsSet => f.write_str("payload header reserved bits set"),
             Self::BodyCrcMismatch => f.write_str("payload body CRC32 mismatch"),
             Self::DensityOutOfRange(d) => write!(f, "density {d} is outside 1..=4"),
+            Self::PermutationSeedRequired => {
+                f.write_str("permuted scheme requires EmbedOpts/ExtractOpts::seed")
+            }
         }
     }
 }

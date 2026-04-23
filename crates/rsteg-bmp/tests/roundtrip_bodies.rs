@@ -45,6 +45,7 @@ fn roundtrip_with(body: &[u8], density: Density) {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density,
+        seed: None,
     };
     let stego = BMP_ADAPTER.embed(&cover, &framed, &opts).unwrap();
     assert_eq!(stego.len(), cover.len());
@@ -56,6 +57,7 @@ fn roundtrip_with(body: &[u8], density: Density) {
                 density: Some(density),
                 skip_header: false,
                 raw_bit_count: None,
+                seed: None,
             },
         )
         .unwrap();
@@ -101,6 +103,7 @@ fn over_capacity_reports_payload_too_large() {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let err = BMP_ADAPTER.embed(&cover, &framed, &opts).unwrap_err();
     assert!(matches!(err, Error::PayloadTooLarge { .. }), "got {err:?}");
@@ -118,6 +121,7 @@ fn cross_format_refused() {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let err = BMP_ADAPTER.embed(png_sig, &framed, &opts).unwrap_err();
     assert!(matches!(err, Error::FormatUnrecognized));
@@ -132,6 +136,7 @@ fn plaintext_tamper_trips_body_crc() {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let mut stego = BMP_ADAPTER.embed(&cover, &framed, &opts).unwrap();
 
@@ -148,6 +153,7 @@ fn plaintext_tamper_trips_body_crc() {
                 density: Some(Density::Low),
                 skip_header: false,
                 raw_bit_count: None,
+                seed: None,
             },
         )
         .unwrap_err();
@@ -167,6 +173,7 @@ fn out_of_band_region_preserved() {
             &EmbedOpts {
                 scheme: Some("bmp-lsb-linear"),
                 density: Density::Low,
+                seed: None,
             },
         )
         .unwrap();
