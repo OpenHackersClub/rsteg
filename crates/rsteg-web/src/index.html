@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — steganography, done in Rust</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --danger: #ff7b72;
+      --code: #f85149;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 880px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 38px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 40px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      background: var(--panel); border: 1px solid var(--border);
+      font-family: var(--mono); font-size: 11px; color: var(--muted);
+      margin-right: 6px;
+    }
+    .tag.ok { color: var(--accent); border-color: #2a4a2a; }
+    .tag.wip { color: var(--warn); border-color: #4a3a1a; }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+    .panel.accent { border-color: #264d2a; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+    label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+    input[type="text"], input[type="file"], textarea, select {
+      width: 100%; background: var(--panel-2); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;
+      font-family: var(--mono); font-size: 13px;
+    }
+    textarea { min-height: 70px; resize: vertical; }
+    button {
+      background: var(--accent); color: #0d1117; border: 0; border-radius: 4px;
+      padding: 9px 16px; font-weight: 600; font-size: 13px; cursor: pointer;
+      font-family: inherit; margin-top: 10px;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:active { transform: translateY(1px); }
+    button.secondary { background: var(--panel-2); color: var(--fg); border: 1px solid var(--border); }
+    .result {
+      margin-top: 12px; padding: 10px 12px; border-radius: 4px;
+      font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+    }
+    .result.err { border-left-color: var(--danger); color: var(--danger); }
+    .kbd {
+      font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+      padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+    .bit-vis {
+      display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px;
+      font-family: var(--mono); font-size: 12px; text-align: center;
+      margin: 8px 0;
+    }
+    .bit-vis > div { background: var(--panel-2); padding: 6px 2px; border-radius: 3px; }
+    .bit-vis > div.lsb { background: #1f3a1f; color: var(--accent); }
+    .byte-change .before { color: var(--muted); text-decoration: line-through; }
+    .byte-change .after { color: var(--accent); }
+    .gallery {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px; margin: 10px 0 14px;
+    }
+    .tile {
+      background: var(--panel-2); border: 2px solid var(--border); border-radius: 6px;
+      padding: 8px; cursor: pointer; transition: border-color 80ms, transform 80ms;
+      text-align: center;
+    }
+    .tile:hover { border-color: var(--accent-2); }
+    .tile.selected { border-color: var(--accent); background: #1a2d1a; }
+    .tile img {
+      width: 100%; aspect-ratio: 1/1; display: block; border-radius: 3px;
+      image-rendering: pixelated; background: #0a0d12;
+    }
+    .tile-label {
+      font-family: var(--mono); font-size: 11px; color: var(--fg);
+      margin-top: 6px; font-weight: 600;
+    }
+    .tile.selected .tile-label { color: var(--accent); }
+    .tile-note {
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+      margin-top: 3px; line-height: 1.35;
+    }
+    .preview {
+      display: none;
+      grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px;
+      font-family: var(--mono); font-size: 12px; color: var(--muted);
+    }
+    .preview.show { display: grid; }
+    .preview img {
+      width: 100%; border: 1px solid var(--border); border-radius: 4px;
+      image-rendering: pixelated; background: #0a0d12; min-height: 80px;
+    }
+    .preview .tag { margin-bottom: 6px; }
+    .preview a { font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<h1>rsteg</h1>
+<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with steghide and stegano-rs.</p>
+
+<div>
+  <span class="tag ok">phase 1</span>
+  <span class="tag ok">BMP 24-bit ready</span>
+  <span class="tag wip">WAV next</span>
+  <span class="tag wip">PNG next</span>
+  <span class="tag wip">crypto next</span>
+</div>
+
+<h2>What is steganography?</h2>
+<p>
+  Cryptography hides <em>what</em> a message says. Steganography hides <em>that there is a message at all</em>.
+  rsteg takes a carrier file (image, audio) and tweaks its least-significant bits so they spell out a hidden payload.
+  A copy of the carrier that doesn't use rsteg is indistinguishable from a copy that does — unless you know the scheme.
+</p>
+
+<h3>How LSB embedding works</h3>
+<p>For each byte of the cover, we overwrite the <span class="kbd">density</span> low bits with one bit of payload:</p>
+<div class="bit-vis">
+  <div>b7</div><div>b6</div><div>b5</div><div>b4</div><div>b3</div><div>b2</div><div>b1</div><div class="lsb">LSB</div>
+</div>
+<p class="muted" style="font-size:13px">
+  At density 1, the top 7 bits of the pixel are untouched. A pixel value of
+  <code>0xA3 = 10100011</code> becomes <code>0xA2 = 10100010</code> to carry a
+  <code>0</code> bit — a 1/256 change, invisible to the eye. At density 4 you
+  get four times the capacity and the change is ±7 (still perceptually tiny but
+  statistically detectable).
+</p>
+
+<h2 id="demo">Try it</h2>
+
+<div class="panel accent">
+  <h3 style="margin-top:0">Embed</h3>
+  <p class="muted" style="font-size:13px; margin:0 0 8px">
+    Pick a pre-generated cover or upload your own 24-bit BMP. Result downloads as
+    <code>stego.bmp</code> and gets previewed alongside the cover for a visual diff.
+  </p>
+
+  <label>Pre-generated covers (click to select)</label>
+  <div class="gallery" id="preset-gallery"><span class="muted" style="font-family:var(--mono); font-size:12px">loading presets…</span></div>
+
+  <form id="embed-form" enctype="multipart/form-data">
+    <input type="hidden" id="preset" name="preset" value="gradient" />
+    <div class="grid-2">
+      <div>
+        <label for="cover">…or upload your own BMP (overrides preset)</label>
+        <input type="file" id="cover" name="cover" accept="image/bmp" />
+      </div>
+      <div>
+        <label for="density">Density (bits per pixel byte)</label>
+        <select id="density" name="density">
+          <option value="1" selected>1 — safest, default</option>
+          <option value="2">2 — capacity/visibility knee</option>
+          <option value="3">3 — aggressive, visible artifacts possible</option>
+          <option value="4">4 — maximum, definitely visible</option>
+        </select>
+      </div>
+    </div>
+    <label for="secret">Secret text</label>
+    <textarea id="secret" name="secret" placeholder="the mitochondria is the powerhouse of the cell">the mitochondria is the powerhouse of the cell</textarea>
+    <button type="submit">Embed &amp; show diff</button>
+    <button type="button" class="secondary" id="download-cover">Download selected cover</button>
+  </form>
+  <div id="embed-result" class="result" hidden></div>
+  <div id="embed-preview" class="preview">
+    <div>
+      <div><span class="tag">cover</span></div>
+      <img id="preview-cover" alt="cover" />
+    </div>
+    <div>
+      <div>
+        <span class="tag ok">stego (after embed)</span>
+        <a id="preview-stego-dl" href="#" download="stego.bmp" style="margin-left:8px">download</a>
+      </div>
+      <img id="preview-stego" alt="stego" />
+      <div id="preview-stego-status" class="muted" style="font-size:11px; margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Extract</h3>
+  <p class="muted" style="font-size:13px; margin:0 0 8px">Upload a stego BMP produced above to recover the secret.</p>
+  <form id="extract-form" enctype="multipart/form-data">
+    <div class="grid-2">
+      <div>
+        <label for="stego">Stego BMP</label>
+        <input type="file" id="stego" name="stego" accept="image/bmp" required />
+      </div>
+      <div>
+        <label for="ex-density">Density used on embed</label>
+        <select id="ex-density" name="density">
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit">Extract</button>
+  </form>
+  <div id="extract-result" class="result" hidden></div>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Inspect</h3>
+  <p class="muted" style="font-size:13px; margin:0 0 8px">Point at any file — we'll tell you if it's a format we recognize and how much payload it could hold.</p>
+  <form id="inspect-form" enctype="multipart/form-data">
+    <input type="file" id="inspect-file" name="file" required />
+    <button type="submit">Inspect</button>
+  </form>
+  <div id="inspect-result" class="result" hidden></div>
+</div>
+
+<h2>How rsteg is built</h2>
+
+<h3>Plugin architecture via Cargo features</h3>
+<p>
+  <code>rsteg-core</code> has zero runtime deps. Each carrier format and each
+  crypto scheme is a separate crate gated by a Cargo feature. If you only need
+  PNG-LSB, <code>cargo build --no-default-features --features png</code> pulls
+  exactly one transitive dep (<code>miniz_oxide</code> for DEFLATE).
+</p>
+<pre>rsteg-cli
+  ├── rsteg-core                  (std only)
+  ├── rsteg-png        feat: png  (miniz_oxide)
+  ├── rsteg-bmp        feat: bmp  (zero deps)
+  ├── rsteg-wav        feat: wav  (zero deps)
+  ├── rsteg-jpeg       feat: jpeg (zune-jpeg, phase 2)
+  └── rsteg-crypto     feat: crypto + compat-steghide</pre>
+
+<h3>The 32-byte PayloadHeader</h3>
+<p>Every rsteg-written carrier starts its embedded bit-stream with a 32-byte frame:</p>
+<pre>magic "RSTG" │ version │ flags │ crypto_fourcc │ scheme_fourcc │ density │ body_len │ body_crc32 │ reserved
+  4           │   1     │  1    │      4        │      4        │    1    │    4     │     4       │    8   = 32 bytes</pre>
+<p class="muted" style="font-size:13px">
+  When a payload is encrypted (XChaCha20-Poly1305 + Argon2id KDF — feature landing next),
+  the full header is bound into the AEAD associated data. Tampering with any field — or a
+  rollback to an older scheme — fails Poly1305 tag verification, not the plaintext CRC.
+  The CRC is there only as an integrity hint for unencrypted payloads.
+</p>
+
+<h3>Supply-chain posture</h3>
+<ul>
+  <li>Every direct dependency is spec-allowlisted before it enters <code>Cargo.toml</code>.</li>
+  <li>No <code>serde_derive</code>, <code>thiserror</code>, <code>clap</code>, or any proc-macro — compile-time arbitrary code is the exact attack surface we're shrinking.</li>
+  <li><code>#![deny(unsafe_code)]</code> workspace-wide, with documented per-module opt-outs only for SIMD hot paths.</li>
+  <li>Target budget: ≤ 30 transitive crates with default features; ≤ 2 with <code>--no-default-features --features png</code>.</li>
+</ul>
+
+<h3>Status today</h3>
+<ul>
+  <li><span class="tag ok">done</span> Workspace scaffolded, 10 spec documents reviewed by 5 agents and revised.</li>
+  <li><span class="tag ok">done</span> <code>rsteg-core</code>: <code>FormatAdapter</code> trait, 32-byte <code>PayloadHeader</code>, <code>BitReader</code>/<code>BitWriter</code>, CRC-32/IEEE, <code>Error</code> enum. 14 tests green.</li>
+  <li><span class="tag ok">done</span> <code>rsteg-bmp</code>: 24-bit uncompressed linear LSB, all four densities. 10 integration tests.</li>
+  <li><span class="tag wip">next</span> <code>rsteg-wav</code>, <code>rsteg-crypto</code> (XChaCha20-Poly1305 + Argon2id), permuted LSB scheme, <code>rsteg-png</code>.</li>
+  <li><span class="tag wip">next</span> CLI with <code>lexopt</code>: <code>rsteg embed</code>, <code>rsteg extract</code>, <code>rsteg inspect</code>.</li>
+  <li><span class="tag wip">next</span> Compat-read for steghide's BMP/WAV output (phase 1), JPEG F5 in phase 2.</li>
+</ul>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  async function postForm(url, form) {
+    const data = new FormData(form);
+    return await fetch(url, { method: "POST", body: data });
+  }
+
+  // --- Preset gallery ---
+  let selectedPreset = "gradient";
+
+  async function loadPresets() {
+    const r = await fetch("/api/presets");
+    const presets = await r.json();
+    const gal = $("preset-gallery");
+    gal.innerHTML = "";
+    for (const p of presets) {
+      const tile = document.createElement("div");
+      tile.className = "tile" + (p.id === selectedPreset ? " selected" : "");
+      tile.dataset.id = p.id;
+      tile.innerHTML =
+        '<img src="' + p.url + '" alt="' + p.label + '" />' +
+        '<div class="tile-label">' + p.label + '</div>' +
+        '<div class="tile-note">' + p.note + '</div>';
+      tile.addEventListener("click", () => selectPreset(p.id));
+      gal.appendChild(tile);
+    }
+    updateCoverPreview();
+  }
+
+  function selectPreset(id) {
+    selectedPreset = id;
+    $("preset").value = id;
+    // Clear any uploaded file — preset wins when cover input is empty.
+    $("cover").value = "";
+    for (const t of document.querySelectorAll(".tile")) {
+      t.classList.toggle("selected", t.dataset.id === id);
+    }
+    updateCoverPreview();
+    // Hide stale stego preview when switching cover.
+    $("embed-preview").classList.remove("show");
+  }
+
+  function updateCoverPreview() {
+    const file = $("cover").files[0];
+    const img = $("preview-cover");
+    if (file) {
+      img.src = URL.createObjectURL(file);
+    } else {
+      img.src = "/api/preset/" + selectedPreset + "?t=" + Date.now();
+    }
+  }
+
+  $("cover").addEventListener("change", () => {
+    // If user uploaded a file, visually de-emphasize the preset selection.
+    if ($("cover").files[0]) {
+      for (const t of document.querySelectorAll(".tile")) t.classList.remove("selected");
+    } else {
+      for (const t of document.querySelectorAll(".tile"))
+        t.classList.toggle("selected", t.dataset.id === selectedPreset);
+    }
+    updateCoverPreview();
+    $("embed-preview").classList.remove("show");
+  });
+
+  loadPresets();
+
+  let lastStegoUrl = null;
+
+  $("embed-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const res = $("embed-result");
+    const status = $("preview-stego-status");
+    res.hidden = false; res.classList.remove("err");
+    res.textContent = "embedding…";
+    status.textContent = "";
+
+    try {
+      const r = await postForm("/api/embed", e.target);
+      if (!r.ok) {
+        let err = r.statusText;
+        try { err = (await r.json()).error || err; } catch (_) {}
+        res.classList.add("err");
+        res.textContent = "error: " + err;
+        return;
+      }
+      const framed = r.headers.get("x-rsteg-framed-bytes");
+      const density = r.headers.get("x-rsteg-density");
+
+      // Read the body as an ArrayBuffer, then rebuild the Blob with an explicit
+      // MIME type — some responses lose the content-type when re-blobbed.
+      const buf = await r.arrayBuffer();
+      const blob = new Blob([buf], { type: "image/bmp" });
+      if (lastStegoUrl) URL.revokeObjectURL(lastStegoUrl);
+      lastStegoUrl = URL.createObjectURL(blob);
+
+      const img = $("preview-stego");
+      const dl = $("preview-stego-dl");
+      dl.href = lastStegoUrl;
+      img.onload = () => {
+        status.textContent = "rendered " + img.naturalWidth + "×" + img.naturalHeight + " (" + blob.size + " bytes)";
+      };
+      img.onerror = () => {
+        status.textContent = "(browser could not inline-render BMP — use the download link above; file IS valid)";
+      };
+      // Force a reload by resetting src.
+      img.removeAttribute("src");
+      img.src = lastStegoUrl;
+      $("embed-preview").classList.add("show");
+
+      res.textContent =
+        "✓ embedded " + framed + " framed bytes at density " + density + "\n" +
+        "  stego.bmp is " + blob.size + " bytes.";
+    } catch (err) {
+      res.classList.add("err");
+      res.textContent = "fetch error: " + err.message;
+    }
+  });
+
+  $("download-cover").addEventListener("click", () => {
+    const uploaded = $("cover").files[0];
+    if (uploaded) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(uploaded);
+      a.download = uploaded.name;
+      a.click();
+    } else {
+      window.location.href = "/api/preset/" + selectedPreset;
+    }
+  });
+
+  $("extract-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const res = $("extract-result");
+    res.hidden = false; res.classList.remove("err");
+    res.textContent = "extracting…";
+    try {
+      const r = await postForm("/api/extract", e.target);
+      const j = await r.json();
+      if (!r.ok) {
+        res.classList.add("err");
+        res.textContent = "error: " + (j.error || r.statusText);
+        return;
+      }
+      const lines = [
+        "✓ extracted " + j.body_len + " body bytes (framed " + j.framed_len + ")",
+        "  scheme: " + j.scheme_fourcc + "   density: " + j.density,
+        "",
+        "  utf-8: " + (j.secret_utf8 ? JSON.stringify(j.secret_utf8) : "(non-utf-8)"),
+        "  hex:   " + j.secret_hex,
+      ];
+      res.textContent = lines.join("\n");
+    } catch (err) {
+      res.classList.add("err");
+      res.textContent = "fetch error: " + err.message;
+    }
+  });
+
+  $("inspect-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const res = $("inspect-result");
+    res.hidden = false; res.classList.remove("err");
+    res.textContent = "inspecting…";
+    try {
+      const r = await postForm("/api/inspect", e.target);
+      const j = await r.json();
+      if (!r.ok) {
+        res.classList.add("err");
+        res.textContent = "error: " + (j.error || r.statusText);
+        return;
+      }
+      res.textContent = JSON.stringify(j, null, 2);
+    } catch (err) {
+      res.classList.add("err");
+      res.textContent = "fetch error: " + err.message;
+    }
+  });
+</script>
+
+</body>
+</html>
