@@ -1,0 +1,15 @@
+[package]
+name = "rsteg-png"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PNG format adapter for rsteg."
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core  = { path = "../rsteg-core" }
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
