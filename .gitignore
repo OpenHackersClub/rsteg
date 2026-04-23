@@ -30,3 +30,4 @@ fuzz/artifacts/
 
 # Bench harness scratch
 target/rsteg-bench-corpus/
+.claude/
