@@ -59,7 +59,8 @@ fn roundtrip_with(cover: &[u8], body: &[u8], density: Density) {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density,
-            },
+            seed: None,
+    },
         )
         .unwrap();
     let extracted = PNG_ADAPTER
@@ -70,7 +71,8 @@ fn roundtrip_with(cover: &[u8], body: &[u8], density: Density) {
                 density: Some(density),
                 skip_header: false,
                 raw_bit_count: None,
-            },
+            seed: None,
+    },
         )
         .unwrap();
     assert_eq!(extracted, framed);
@@ -129,7 +131,8 @@ fn over_capacity_reports_payload_too_large() {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density: Density::Low,
-            },
+            seed: None,
+    },
         )
         .unwrap_err();
     assert!(matches!(err, Error::PayloadTooLarge { .. }), "got {err:?}");
@@ -148,7 +151,8 @@ fn cross_format_refused() {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density: Density::Low,
-            },
+            seed: None,
+    },
         )
         .unwrap_err();
     assert!(matches!(err, Error::FormatUnrecognized));
@@ -167,7 +171,8 @@ fn plaintext_tamper_trips_body_crc() {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density: Density::Low,
-            },
+            seed: None,
+    },
         )
         .unwrap();
 
@@ -185,7 +190,8 @@ fn plaintext_tamper_trips_body_crc() {
             density: Some(Density::Low),
             skip_header: false,
             raw_bit_count: None,
-        },
+        seed: None,
+    },
     ) {
         // Various error paths are acceptable; the guarantee is Err(not Ok(same bytes)).
         Err(_) => {}
@@ -214,7 +220,8 @@ fn ancillary_chunks_preserved_verbatim() {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density: Density::Low,
-            },
+            seed: None,
+    },
         )
         .unwrap();
 

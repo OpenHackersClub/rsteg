@@ -61,6 +61,7 @@ fn roundtrip_empty_payload_rgb8_linear_density_low() {
     let opts = EmbedOpts {
         scheme: Some("png-lsb-linear"),
         density: Density::Low,
+    seed: None,
     };
     let stego = PNG_ADAPTER
         .embed(&cover, &framed, &opts)
@@ -79,7 +80,8 @@ fn roundtrip_empty_payload_rgb8_linear_density_low() {
                 density: Some(Density::Low),
                 skip_header: false,
                 raw_bit_count: None,
-            },
+            seed: None,
+    },
         )
         .expect("extract should succeed");
 

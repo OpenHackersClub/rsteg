@@ -129,7 +129,8 @@ fn preserves_per_row_filter_choice() {
             &EmbedOpts {
                 scheme: Some("png-lsb-linear"),
                 density: Density::Low,
-            },
+            seed: None,
+    },
         )
         .unwrap();
 
@@ -145,7 +146,8 @@ fn preserves_per_row_filter_choice() {
                 density: Some(Density::Low),
                 skip_header: false,
                 raw_bit_count: None,
-            },
+            seed: None,
+    },
         )
         .unwrap();
     assert_eq!(extracted, framed);
