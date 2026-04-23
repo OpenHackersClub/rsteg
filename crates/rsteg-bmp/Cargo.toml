@@ -1,0 +1,14 @@
+[package]
+name = "rsteg-bmp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "BMP format adapter for rsteg."
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core = { path = "../rsteg-core" }
