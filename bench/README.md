@@ -37,9 +37,12 @@ install -m755 .tmp/steghide-wrapper.sh ~/.local/bin/steghide
 |-------------------------------|----------|-----------|---------|------------------------|
 | BMP 128×128 embed 1 KB        |   2.6 ms |  2373 ms  |    —    | **913×**               |
 | BMP 128×128 extract 1 KB      |   2.4 ms |  2352 ms  |    —    | **980×**               |
-| WAV 5 s stereo embed 1 KB     |   3.0 ms |   394 ms  |   71 ms | **24×**                |
-| WAV 5 s stereo embed 20 KB    |   3.5 ms |  3152 ms  |   72 ms | **21×**                |
-| WAV 5 s stereo extract 20 KB  |   3.0 ms |  1195 ms  |   70 ms | **23×**                |
+| BMP 512×512 embed 1 KB        |   4.2 ms |   357 ms  |    —    | **85×**                |
+| BMP 512×512 embed 10 KB       |   4.0 ms |  1549 ms  |    —    | **387×**               |
+| BMP 512×512 extract 1 KB      |   3.1 ms |   622 ms  |    —    | **200×**               |
+| WAV 5 s stereo embed 1 KB     |   2.4 ms |   373 ms  |   69 ms | **29×**                |
+| WAV 5 s stereo embed 20 KB    |   3.5 ms |  2766 ms  |   71 ms | **20×**                |
+| WAV 5 s stereo extract 20 KB  |   2.9 ms |  1288 ms  |   68 ms | **23×**                |
 | PNG 256×256 embed 1 KB        |   6.1 ms |     —     |   67 ms | **11×**                |
 | PNG 256×256 extract 10 KB     |   2.6 ms |     —     |   66 ms | **25×**                |
 
