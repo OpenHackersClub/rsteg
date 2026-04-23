@@ -316,6 +316,13 @@ name = "rsteg-core"
 version = "0.1.0"
 
 [[package]]
+name = "rsteg-wav"
+version = "0.1.0"
+dependencies = [
+ "rsteg-core",
+]
+
+[[package]]
 name = "rsteg-web"
 version = "0.1.0"
 dependencies = [

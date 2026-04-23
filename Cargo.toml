@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/rsteg-core",
     "crates/rsteg-bmp",
+    "crates/rsteg-wav",
     "crates/rsteg-web",
 ]
 
