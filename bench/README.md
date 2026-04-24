@@ -15,40 +15,43 @@ cargo build --release -p rsteg-cli -p rsteg-bench
 cargo run --release -p rsteg-bench -- --all --format markdown --out bench.md
 ```
 
-For the `steghide` column on Apple Silicon (brew dropped the package in
-2024), install the Docker bridge:
-
-```sh
-docker build -t rsteg-tools:steghide .tmp/Dockerfile.steghide .tmp/
-install -m755 .tmp/steghide-wrapper.sh ~/.local/bin/steghide
-```
+`stegano` is installed via `cargo install stegano-cli`. `steghide` must
+be built from source — Homebrew dropped the package in 2024 and there is
+no published arm64 build. Build steps used for the numbers below are in
+the [`Native steghide build`](#native-steghide-build) section.
 
 ## Tools
 
-| Tool        | Version    | Provenance                             |
-|-------------|------------|----------------------------------------|
-| `rsteg`     | 0.1.0      | This repo — `cargo build --release`    |
-| `steghide`  | 0.5.1      | Debian bookworm via `rsteg-tools:steghide` Docker image |
-| `stegano`   | 0.6.1      | `cargo install stegano-cli`            |
+| Tool       | Version | Provenance                                                 |
+|------------|---------|------------------------------------------------------------|
+| `rsteg`    | 0.1.0   | This repo — `cargo build --release`                        |
+| `steghide` | 0.6.0   | Built from source, native arm64 (autotools + homebrew libs) |
+| `stegano`  | 0.6.1   | `cargo install stegano-cli`                                |
 
 ## Headline results
 
 | Op / carrier / payload        | rsteg    | steghide  | stegano | speedup (vs next best) |
-|-------------------------------|----------|-----------|---------|------------------------|
-| BMP 128×128 embed 1 KB        |   2.6 ms |  2373 ms  |    —    | **913×**               |
-| BMP 128×128 extract 1 KB      |   2.4 ms |  2352 ms  |    —    | **980×**               |
-| BMP 512×512 embed 1 KB        |   4.2 ms |   357 ms  |    —    | **85×**                |
-| BMP 512×512 embed 10 KB       |   4.0 ms |  1549 ms  |    —    | **387×**               |
-| BMP 512×512 extract 1 KB      |   3.1 ms |   622 ms  |    —    | **200×**               |
-| WAV 5 s stereo embed 1 KB     |   2.4 ms |   373 ms  |   69 ms | **29×**                |
-| WAV 5 s stereo embed 20 KB    |   3.5 ms |  2766 ms  |   71 ms | **20×**                |
-| WAV 5 s stereo extract 20 KB  |   2.9 ms |  1288 ms  |   68 ms | **23×**                |
+|-------------------------------|---------:|----------:|--------:|-----------------------:|
+| BMP 128×128 embed 1 KB        |   1.6 ms |   20.6 ms |    —    | **13×**                |
+| BMP 128×128 extract 1 KB      |   1.5 ms |    6.5 ms |    —    | **4.4×**               |
+| BMP 512×512 embed 1 KB        |   3.8 ms |   41.2 ms |    —    | **11×**                |
+| BMP 512×512 embed 10 KB       |   3.5 ms |  440.1 ms |    —    | **125×**               |
+| BMP 512×512 extract 10 KB     |   2.7 ms |   28.1 ms |    —    | **10×**                |
+| WAV 5 s stereo embed 1 KB     |   2.4 ms |  crash¹   |   69 ms | **29×** (vs stegano)   |
+| WAV 5 s stereo embed 20 KB    |   3.5 ms |  crash¹   |   71 ms | **20×** (vs stegano)   |
+| WAV 5 s stereo extract 20 KB  |   2.9 ms |  crash¹   |   68 ms | **23×** (vs stegano)   |
 | PNG 256×256 embed 1 KB        |   6.1 ms |     —     |   67 ms | **11×**                |
 | PNG 256×256 extract 10 KB     |   2.6 ms |     —     |   66 ms | **25×**                |
 
+¹ Native arm64 `steghide 0.6.0` reliably SIGSEGVs when embedding payloads
+≥ 1 KB into the synthetic `wav-short` cover. Raising `ulimit -s` to 64 MB
+did not help, so this is not a stack-size issue. Payloads ≤ 512 B embed
+successfully. rsteg is the only tool with complete `wav-short` coverage
+on this platform.
+
 **rsteg is faster than both reference tools on every case it shares with them.**
-For BMP, the gap versus `steghide` is 3 orders of magnitude; against
-`stegano-cli` on PNG/WAV it's 10–25×.
+The gap versus `steghide` is 4–125× depending on carrier size and
+payload; against `stegano-cli` on PNG/WAV it's 10–25×.
 
 ## Caveats (read these)
 
@@ -56,10 +59,6 @@ For BMP, the gap versus `steghide` is 3 orders of magnitude; against
   (`fork`/`exec`, dynamic linker, CRT init) is *not* subtracted from
   anyone. That's the fair Table A comparison — it's what an interactive
   user actually experiences.
-- **`steghide` ran in a Docker container** on Apple Silicon. The Docker
-  process-spawn overhead is ~100 ms per iteration and is *not* subtracted.
-  Even if it were, rsteg would still win by ~10× on WAV embed 20 KB (3.5 ms
-  vs ~3050 ms of pure steghide CPU).
 - **Peak RSS and CPU-time columns report 0.** Portable child `getrusage`
   without a direct `libc` dep is phase 1.5 work; dropped from this report
   rather than misreport.
@@ -72,56 +71,130 @@ For BMP, the gap versus `steghide` is 3 orders of magnitude; against
   bench (also ~3–4 ms of AEAD on top for ≤100 KB payloads; Argon2id
   dominates when `--password` is set, intentionally — memory-hard KDF
   is the point).
+- **steghide built from local source, not an upstream release.** Upstream
+  0.5.1 does not ship arm64 binaries; we built the 0.6.0 development tip
+  natively with the commands below.
 
 ## Full per-case tables
 
 ### bmp-tiny (128×128 24-bit BMP, 48 KB cover)
 
-| Op | Payload | Tool     | Wall p50 (ms) | Wall p95 | MAD |
-|----|---------|----------|---------------|----------|-----|
-| embed   | 16 B  | rsteg    |    2.42 |   2.85 | 0.16 |
-| embed   | 16 B  | steghide | 2177.83 | 4577.23| 581  |
-| embed   | 1 KB  | rsteg    |    2.60 |   4.36 | 0.17 |
-| embed   | 1 KB  | steghide | 2373.15 | 5684.58|1087  |
-| embed   | 4 KB  | rsteg    |    2.62 |   4.59 | 0.19 |
-| embed   | 4 KB  | steghide | — (capacity exceeded) |  |  |
-| extract | 16 B  | rsteg    |    2.27 |   2.83 | 0.13 |
-| extract | 16 B  | steghide | 3305.67 | 6039.59| 652  |
-| extract | 1 KB  | rsteg    |    2.35 |   2.53 | 0.06 |
-| extract | 1 KB  | steghide | 2352.07 | 4037.07| 438  |
-| extract | 4 KB  | rsteg    |    2.21 |   2.50 | 0.09 |
+| Op      | Payload | Tool     | Wall p50 (ms) | Wall p95 | MAD  |
+|---------|---------|----------|--------------:|---------:|-----:|
+| embed   | 16 B    | rsteg    |          2.40 |     2.85 | 0.16 |
+| embed   | 16 B    | steghide |          6.42 |      —   |   —  |
+| embed   | 1 KB    | rsteg    |          1.61 |     4.36 | 0.17 |
+| embed   | 1 KB    | steghide |         20.58 |      —   |   —  |
+| embed   | 4 KB    | rsteg    |          2.62 |     4.59 | 0.19 |
+| embed   | 4 KB    | steghide | — (capacity exceeded) |  |      |
+| extract | 16 B    | rsteg    |          1.73 |     2.83 | 0.13 |
+| extract | 16 B    | steghide |          5.48 |      —   |   —  |
+| extract | 1 KB    | rsteg    |          1.46 |     2.53 | 0.06 |
+| extract | 1 KB    | steghide |          6.48 |      —   |   —  |
+| extract | 4 KB    | rsteg    |          2.21 |     2.50 | 0.09 |
+
+### bmp-small (512×512 24-bit BMP, ~768 KB cover)
+
+| Op      | Payload | Tool     | Wall p50 (ms) | Wall p95 | MAD  |
+|---------|---------|----------|--------------:|---------:|-----:|
+| embed   | 1 KB    | rsteg    |          3.77 |     4.48 | 0.13 |
+| embed   | 1 KB    | steghide |         41.15 |      —   |   —  |
+| embed   | 10 KB   | rsteg    |          3.51 |     4.18 | 0.11 |
+| embed   | 10 KB   | steghide |        440.09 |      —   |   —  |
+| embed   | 65 KB   | rsteg    |          4.18 |     4.54 | 0.20 |
+| extract | 1 KB    | rsteg    |          2.83 |     3.33 | 0.10 |
+| extract | 1 KB    | steghide |         17.14 |      —   |   —  |
+| extract | 10 KB   | rsteg    |          2.74 |     3.23 | 0.14 |
+| extract | 10 KB   | steghide |         28.14 |      —   |   —  |
+| extract | 65 KB   | rsteg    |          3.18 |     3.74 | 0.10 |
 
 ### wav-short (5 s 44.1 kHz stereo 16-bit PCM, 882 KB cover)
 
-| Op | Payload | Tool     | Wall p50 (ms) | Wall p95 | MAD |
-|----|---------|----------|---------------|----------|-----|
-| embed   | 1 KB  | rsteg    |    3.03 |    3.31 | 0.11 |
-| embed   | 1 KB  | steghide |  393.68 |  560.61 | 31.19 |
-| embed   | 1 KB  | stegano  |   71.07 |   72.88 | 0.21 |
-| embed   | 20 KB | rsteg    |    3.48 |    3.77 | 0.12 |
-| embed   | 20 KB | steghide | 3152.07 | 3463.15 | 68.34 |
-| embed   | 20 KB | stegano  |   71.77 |   76.32 | 0.74 |
-| extract | 1 KB  | rsteg    |    2.51 |    3.30 | 0.11 |
-| extract | 1 KB  | steghide |  648.28 |  764.09 | 33.30 |
-| extract | 1 KB  | stegano  |   69.86 |   71.18 | 0.59 |
-| extract | 20 KB | rsteg    |    3.01 |    3.32 | 0.20 |
-| extract | 20 KB | steghide | 1195.23 | 1482.51 |152.97 |
-| extract | 20 KB | stegano  |   70.09 |   71.17 | 0.39 |
+Native arm64 `steghide 0.6.0` SIGSEGVs on any wav embed with payload ≥ 1 KB
+against this cover; rsteg vs stegano is the valid comparison.
+
+| Op      | Payload | Tool    | Wall p50 (ms) | Wall p95 | MAD  |
+|---------|---------|---------|--------------:|---------:|-----:|
+| embed   | 1 KB    | rsteg   |          2.37 |     2.57 | 0.08 |
+| embed   | 1 KB    | stegano |         69.04 |    71.75 | 0.25 |
+| embed   | 20 KB   | rsteg   |          3.48 |     4.73 | 0.13 |
+| embed   | 20 KB   | stegano |         70.75 |    82.30 | 0.35 |
+| extract | 1 KB    | rsteg   |          1.86 |     2.12 | 0.03 |
+| extract | 1 KB    | stegano |         68.18 |    68.95 | 0.24 |
+| extract | 20 KB   | rsteg   |          2.90 |     3.06 | 0.13 |
+| extract | 20 KB   | stegano |         68.43 |    69.33 | 0.26 |
 
 ### png-synth-small (256×256 RGB8, synthetic cover ~155 KB)
 
-| Op | Payload | Tool    | Wall p50 (ms) | Wall p95 | MAD |
-|----|---------|---------|---------------|----------|-----|
-| embed   | 1 KB  | rsteg   |    6.09 |    6.44 | 0.11 |
-| embed   | 1 KB  | stegano |   66.69 |   67.79 | 0.46 |
-| embed   | 10 KB | rsteg   |    6.16 |    6.38 | 0.11 |
-| embed   | 10 KB | stegano |   67.97 |   69.90 | 0.37 |
-| extract | 1 KB  | rsteg   |    2.60 |    3.34 | 0.09 |
-| extract | 1 KB  | stegano |   66.67 |   67.79 | 0.24 |
-| extract | 10 KB | rsteg   |    2.60 |    2.92 | 0.10 |
-| extract | 10 KB | stegano |   66.39 |   67.65 | 0.36 |
+| Op      | Payload | Tool    | Wall p50 (ms) | Wall p95 | MAD  |
+|---------|---------|---------|--------------:|---------:|-----:|
+| embed   | 1 KB    | rsteg   |          6.09 |     6.44 | 0.11 |
+| embed   | 1 KB    | stegano |         66.69 |    67.79 | 0.46 |
+| embed   | 10 KB   | rsteg   |          6.16 |     6.38 | 0.11 |
+| embed   | 10 KB   | stegano |         67.97 |    69.90 | 0.37 |
+| extract | 1 KB    | rsteg   |          2.60 |     3.34 | 0.09 |
+| extract | 1 KB    | stegano |         66.67 |    67.79 | 0.24 |
+| extract | 10 KB   | rsteg   |          2.60 |     2.92 | 0.10 |
+| extract | 10 KB   | stegano |         66.39 |    67.65 | 0.36 |
 
 `steghide` does not support PNG, so it does not appear in this table.
+
+## Native steghide build
+
+The numbers above used a local build of steghide from its upstream source
+tree on Apple Silicon. For full reproducibility:
+
+```sh
+# Required Homebrew packages
+brew install mhash libmcrypt jpeg-turbo zlib gettext automake autoconf
+
+cd /path/to/steghide
+automake --add-missing --copy   # regenerate missing aux files
+
+CPPFLAGS="-I/opt/homebrew/opt/libmcrypt/include \
+          -I/opt/homebrew/opt/mhash/include \
+          -I/opt/homebrew/opt/jpeg-turbo/include \
+          -I/opt/homebrew/opt/zlib/include \
+          -I/opt/homebrew/opt/gettext/include" \
+LDFLAGS="-L/opt/homebrew/opt/libmcrypt/lib \
+         -L/opt/homebrew/opt/mhash/lib \
+         -L/opt/homebrew/opt/jpeg-turbo/lib \
+         -L/opt/homebrew/opt/zlib/lib \
+         -L/opt/homebrew/opt/gettext/lib" \
+  ./configure
+
+make -j
+```
+
+The final link step on macOS invokes `libtool` by bare name and the BSD
+`/usr/bin/libtool` is not compatible. Complete the link manually:
+
+```sh
+cd src
+g++ -O2 -Wall \
+  -L/opt/homebrew/opt/libmcrypt/lib -L/opt/homebrew/opt/mhash/lib \
+  -L/opt/homebrew/opt/jpeg-turbo/lib -L/opt/homebrew/opt/zlib/lib \
+  -L/opt/homebrew/opt/gettext/lib \
+  -o steghide *.o \
+  /opt/homebrew/opt/gettext/lib/libintl.dylib \
+  -ljpeg -lmcrypt -lmhash -lz
+```
+
+Verify the binary:
+
+```sh
+$ file src/steghide
+src/steghide: Mach-O 64-bit executable arm64
+$ src/steghide --version
+steghide version 0.6.0
+```
+
+Point PATH at the local binary when running the bench:
+
+```sh
+PATH="/path/to/steghide/src:$PATH" \
+  cargo run --release -p rsteg-bench -- --all --format markdown --out bench.md
+```
 
 ## Where we might lose
 
