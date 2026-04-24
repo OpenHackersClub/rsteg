@@ -1,0 +1,37 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: cloudflare pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify static artifact
+        # The deploy artifact is checked-in static HTML — no Rust build needed.
+        # Fail fast if the directory or index page is missing so broken state
+        # never ships to Pages.
+        run: |
+          test -d public || { echo "public/ missing"; exit 1; }
+          test -f public/index.html || { echo "public/index.html missing"; exit 1; }
+          echo "public/ contents:"
+          ls -la public
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=rsteg --branch=${{ github.ref_name }}
