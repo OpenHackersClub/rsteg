@@ -181,23 +181,6 @@
       border-left: 3px solid var(--accent);
     }
 
-    .bench-wrap { margin: 12px 0 4px; overflow-x: auto; }
-    .bench-wrap table {
-      border-collapse: collapse; width: 100%; font-size: 13px;
-    }
-    .bench-wrap th, .bench-wrap td {
-      text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    .bench-wrap th {
-      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
-      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
-    }
-    .bench-wrap td { font-family: var(--mono); }
-    .bench-wrap td:first-child { font-family: inherit; }
-    .bench-wrap strong { color: var(--accent); }
-    .bench-wrap sup { color: var(--muted); }
-
     .topnav {
       display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
       font-family: var(--mono); font-size: 13px;
@@ -216,12 +199,12 @@
   <div class="links">
     <a href="/" class="current">home</a>
     <a href="/algo">algos</a>
-    <a href="/#bench">benchmarks</a>
+    <a href="/benchmarks">benchmarks</a>
   </div>
 </nav>
 
 <h1>rsteg</h1>
-<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#stego-demo">live stego demo</a>, <a href="#bench">benchmarks</a>, <a href="#tracker">feature tracker</a>, or read the <a href="/algo">algorithm explainers</a>.</p>
+<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#stego-demo">live stego demo</a>, <a href="/benchmarks">benchmarks</a>, <a href="#tracker">feature tracker</a>, or read the <a href="/algo">algorithm explainers</a>.</p>
 
 <!-- site:begin intro -->
 <h2>What is steganography?</h2>
@@ -278,33 +261,6 @@ statistically detectable).</p>
     --out munch_starry_stego.png \
     --password -
 embedded 328443B into 2058477B carrier → 2166395B stego (328533 bytes framed)</code></pre>
-
-<h2 id="bench">Benchmarks — rsteg vs steghide vs stegano-rs</h2>
-<p class="muted">Median of 11 iterations after 3 warmups, on macOS aarch64. Full methodology and caveats in <a href="https://github.com/OpenHackersClub/rsteg/blob/main/bench/README.md" target="_blank" rel="noreferrer">bench/README.md</a>.</p>
-<div class="bench-wrap">
-<!-- site:begin bench-headline -->
-<table><thead><tr><th>Op / carrier / payload</th><th style="text-align: right">rsteg</th><th style="text-align: right">steghide</th><th style="text-align: right">stegano</th><th style="text-align: right">speedup (vs next best)</th></tr></thead><tbody>
-<tr><td>BMP 128×128 embed 1 KB</td><td style="text-align: right">1.6 ms</td><td style="text-align: right">20.6 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>13×</strong></td></tr>
-<tr><td>BMP 128×128 extract 1 KB</td><td style="text-align: right">1.5 ms</td><td style="text-align: right">6.5 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>4.4×</strong></td></tr>
-<tr><td>BMP 512×512 embed 1 KB</td><td style="text-align: right">3.8 ms</td><td style="text-align: right">41.2 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>11×</strong></td></tr>
-<tr><td>BMP 512×512 embed 10 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">440.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>125×</strong></td></tr>
-<tr><td>BMP 512×512 extract 10 KB</td><td style="text-align: right">2.7 ms</td><td style="text-align: right">28.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>10×</strong></td></tr>
-<tr><td>WAV 5 s stereo embed 1 KB</td><td style="text-align: right">2.4 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">69 ms</td><td style="text-align: right"><strong>29×</strong> (vs stegano)</td></tr>
-<tr><td>WAV 5 s stereo embed 20 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">71 ms</td><td style="text-align: right"><strong>20×</strong> (vs stegano)</td></tr>
-<tr><td>WAV 5 s stereo extract 20 KB</td><td style="text-align: right">2.9 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">68 ms</td><td style="text-align: right"><strong>23×</strong> (vs stegano)</td></tr>
-<tr><td>PNG 256×256 embed 1 KB</td><td style="text-align: right">6.1 ms</td><td style="text-align: right">—</td><td style="text-align: right">67 ms</td><td style="text-align: right"><strong>11×</strong></td></tr>
-<tr><td>PNG 256×256 extract 10 KB</td><td style="text-align: right">2.6 ms</td><td style="text-align: right">—</td><td style="text-align: right">66 ms</td><td style="text-align: right"><strong>25×</strong></td></tr>
-</tbody></table>
-<p>¹ Native arm64 <code>steghide 0.6.0</code> reliably SIGSEGVs when embedding payloads
-≥ 1 KB into the synthetic <code>wav-short</code> cover. Raising <code>ulimit -s</code> to 64 MB
-did not help, so this is not a stack-size issue. Payloads ≤ 512 B embed
-successfully. rsteg is the only tool with complete <code>wav-short</code> coverage
-on this platform.</p>
-<p><strong>rsteg is faster than both reference tools on every case it shares with them.</strong>
-The gap versus <code>steghide</code> is 4–125× depending on carrier size and
-payload; against <code>stegano-cli</code> on PNG/WAV it's 10–25×.</p>
-<!-- site:end bench-headline -->
-</div>
 
 <h2 id="tracker">Feature tracker &amp; comparison</h2>
 

@@ -43,7 +43,10 @@ const BINDINGS: &[SourceBinding] = &[
 /// Targets to rewrite. Each target is scanned for `<!-- site:begin NAME -->`
 /// ... `<!-- site:end NAME -->` pairs and each pair's contents are replaced
 /// with the rendered section named NAME.
-const TARGETS: &[&str] = &["public/index.html"];
+const TARGETS: &[&str] = &[
+    "public/index.html",
+    "public/benchmarks/index.html",
+];
 
 fn main() -> ExitCode {
     let repo_root = repo_root();

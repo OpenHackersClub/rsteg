@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — benchmarks</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="rsteg benchmark report — throughput comparison against steghide and stegano-rs on BMP, WAV, and PNG carriers." />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 960px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 34px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 36px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    .muted { color: var(--muted); }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .topnav .links { display: flex; gap: 14px; flex-wrap: wrap; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
+
+    .bench-wrap { margin: 12px 0 4px; overflow-x: auto; }
+    .bench-wrap table {
+      border-collapse: collapse; width: 100%; font-size: 13px;
+    }
+    .bench-wrap th, .bench-wrap td {
+      text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .bench-wrap th {
+      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .bench-wrap td { font-family: var(--mono); }
+    .bench-wrap td:first-child { font-family: inherit; }
+    .bench-wrap strong { color: var(--accent); }
+
+    .callout {
+      background: var(--panel); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent); border-radius: 4px;
+      padding: 10px 14px; margin: 14px 0;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="links">
+    <a href="/">home</a>
+    <a href="/algo">algos</a>
+    <a href="/benchmarks" class="current">benchmarks</a>
+  </div>
+  <div class="title"><b>benchmarks</b> <span class="muted">— vs steghide &amp; stegano-rs</span></div>
+</nav>
+
+<h1>Benchmarks</h1>
+<p class="muted">Median of 11 iterations after 3 warmups, wall-clock via <code>std::process::Command</code>, on macOS aarch64 (Apple Silicon, 28 cores). Methodology and full per-case tables in <a href="https://github.com/OpenHackersClub/rsteg/blob/main/bench/README.md" target="_blank" rel="noreferrer">bench/README.md</a>.</p>
+
+<h2>Headline results</h2>
+<div class="bench-wrap">
+<!-- site:begin bench-headline -->
+<table><thead><tr><th>Op / carrier / payload</th><th style="text-align: right">rsteg</th><th style="text-align: right">steghide</th><th style="text-align: right">stegano</th><th style="text-align: right">speedup (vs next best)</th></tr></thead><tbody>
+<tr><td>BMP 128×128 embed 1 KB</td><td style="text-align: right">1.6 ms</td><td style="text-align: right">20.6 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>13×</strong></td></tr>
+<tr><td>BMP 128×128 extract 1 KB</td><td style="text-align: right">1.5 ms</td><td style="text-align: right">6.5 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>4.4×</strong></td></tr>
+<tr><td>BMP 512×512 embed 1 KB</td><td style="text-align: right">3.8 ms</td><td style="text-align: right">41.2 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>11×</strong></td></tr>
+<tr><td>BMP 512×512 embed 10 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">440.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>125×</strong></td></tr>
+<tr><td>BMP 512×512 extract 10 KB</td><td style="text-align: right">2.7 ms</td><td style="text-align: right">28.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>10×</strong></td></tr>
+<tr><td>WAV 5 s stereo embed 1 KB</td><td style="text-align: right">2.4 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">69 ms</td><td style="text-align: right"><strong>29×</strong> (vs stegano)</td></tr>
+<tr><td>WAV 5 s stereo embed 20 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">71 ms</td><td style="text-align: right"><strong>20×</strong> (vs stegano)</td></tr>
+<tr><td>WAV 5 s stereo extract 20 KB</td><td style="text-align: right">2.9 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">68 ms</td><td style="text-align: right"><strong>23×</strong> (vs stegano)</td></tr>
+<tr><td>PNG 256×256 embed 1 KB</td><td style="text-align: right">6.1 ms</td><td style="text-align: right">—</td><td style="text-align: right">67 ms</td><td style="text-align: right"><strong>11×</strong></td></tr>
+<tr><td>PNG 256×256 extract 10 KB</td><td style="text-align: right">2.6 ms</td><td style="text-align: right">—</td><td style="text-align: right">66 ms</td><td style="text-align: right"><strong>25×</strong></td></tr>
+</tbody></table>
+<p>¹ Native arm64 <code>steghide 0.6.0</code> reliably SIGSEGVs when embedding payloads
+≥ 1 KB into the synthetic <code>wav-short</code> cover. Raising <code>ulimit -s</code> to 64 MB
+did not help, so this is not a stack-size issue. Payloads ≤ 512 B embed
+successfully. rsteg is the only tool with complete <code>wav-short</code> coverage
+on this platform.</p>
+<p><strong>rsteg is faster than both reference tools on every case it shares with them.</strong>
+The gap versus <code>steghide</code> is 4–125× depending on carrier size and
+payload; against <code>stegano-cli</code> on PNG/WAV it's 10–25×.</p>
+<!-- site:end bench-headline -->
+</div>
+
+<h2>Tool provenance</h2>
+<div class="bench-wrap">
+<table>
+  <thead><tr><th>Tool</th><th>Version</th><th>Build</th></tr></thead>
+  <tbody>
+    <tr><td>rsteg</td><td>0.1.0</td><td>this repo — <code>cargo build --release</code></td></tr>
+    <tr><td>steghide</td><td>0.6.0</td><td>built from source, native arm64 (autotools + Homebrew libs)</td></tr>
+    <tr><td>stegano</td><td>0.6.1</td><td><code>cargo install stegano-cli</code></td></tr>
+  </tbody>
+</table>
+</div>
+<p class="muted">Homebrew dropped the <code>steghide</code> package in 2024, and upstream ships no arm64 binary, so the comparison baseline is a native arm64 build of steghide 0.6.0 (build steps in the full report).</p>
+
+<h2>Caveats</h2>
+<ul>
+  <li><strong>Subprocess overhead is not subtracted.</strong> Wall-clock measurements include <code>fork</code>/<code>exec</code>, dynamic linker, and CRT init — i.e. what an interactive user actually experiences.</li>
+  <li><strong>Synthetic PNG cover uses random pixel data,</strong> adversarial for DEFLATE. Real-photo PNG numbers land in phase 1.5 (<code>png-photo-*</code> cases); <code>miniz_oxide</code> is ~2–3× faster on natural imagery than on noise.</li>
+  <li><strong>Encryption disabled in this run.</strong> The <code>embed-encrypted</code> sub-run measures Argon2id + XChaCha20-Poly1305 overhead separately: ~3–4 ms of AEAD on top for ≤ 100 KB payloads; Argon2id dominates when <code>--password</code> is set (memory-hard KDF, intentionally).</li>
+</ul>
+
+<div class="callout">
+  <strong>rsteg is faster than both reference tools on every case it shares with them.</strong> The gap versus <code>steghide</code> is 4–125× depending on carrier size and payload; against <code>stegano-cli</code> on PNG/WAV it's 10–25×.
+</div>
+
+</body>
+</html>
