@@ -133,14 +133,34 @@
       background: #0a0d12;
     }
     .stego-row figcaption {
-      font-family: var(--mono); font-size: 12px;
-      padding: 8px 2px 0; display: flex; gap: 10px; align-items: baseline;
-      flex-wrap: wrap; color: var(--muted);
+      font-family: var(--mono);
+      padding: 8px 2px 0; color: var(--muted);
+    }
+    .stego-row figcaption .size {
+      font-size: 22px; font-weight: 700; color: var(--fg);
+      letter-spacing: -0.3px; line-height: 1.2;
+    }
+    .stego-row figcaption .size .delta {
+      font-size: 12px; font-weight: 600; color: var(--warn);
+      margin-left: 6px; padding: 2px 6px; border-radius: 3px;
+      background: #2a1f08; border: 1px solid #4a3a1a;
+      vertical-align: middle;
+    }
+    .stego-row figcaption .meta {
+      font-size: 12px; display: flex; gap: 8px; align-items: baseline;
+      flex-wrap: wrap; margin-top: 2px;
     }
     .stego-row figcaption .label {
       color: var(--accent); font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.5px;
     }
+    .size-summary {
+      background: var(--panel); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent); border-radius: 4px;
+      padding: 10px 14px; margin: 14px 0 6px;
+      font-size: 13px;
+    }
+    .size-summary strong { color: var(--fg); }
     details.reveal {
       margin: 10px 0 0; background: var(--panel); border: 1px solid var(--border);
       border-radius: 6px; padding: 10px 14px;
@@ -223,18 +243,28 @@ statistically detectable).</p>
 <!-- site:end lsb-basics -->
 
 <h2 id="stego-demo">See it in action — Munch hidden in Munch</h2>
-<p>The left is an ordinary PNG of Munch's <em>Starry Night</em>. The right is the same painting with <strong>328 KB of arbitrary binary data</strong> — the full JPG of Munch's <em>The Scream</em> — woven into its least significant bits at density 1, sealed with XChaCha20-Poly1305. To the eye and to <code>diff</code>-style byte comparison of visible pixels, they are indistinguishable. Only the bottom bit of every colour channel has been rewritten.</p>
+<p>The left is an ordinary PNG of Munch's <em>Starry Night</em>. The right is the same painting with the full JPG of Munch's <em>The Scream</em> — <strong>321 KB of arbitrary binary data</strong> — woven into its least significant bits at density 1, sealed with XChaCha20-Poly1305. To the eye and to <code>diff</code>-style byte comparison of visible pixels, they are indistinguishable. Only the bottom bit of every colour channel has been rewritten.</p>
 
 <div class="stego-row">
   <figure>
-    <img src="/sample/munch_starry.png" alt="Starry Night — original PNG cover, 2.0 MB" loading="lazy">
-    <figcaption><span class="label">cover</span> <span>munch_starry.png · 2.0 MB</span></figcaption>
+    <img src="/sample/munch_starry.png" alt="Starry Night — original PNG cover, 1.96 MB" loading="lazy">
+    <figcaption>
+      <div class="size">1.96 MB</div>
+      <div class="meta"><span class="label">cover</span> munch_starry.png</div>
+    </figcaption>
   </figure>
   <figure>
-    <img src="/sample/munch_starry_stego.png" alt="Starry Night — PNG with Scream embedded via rsteg, 2.2 MB" loading="lazy">
-    <figcaption><span class="label">stego</span> <span>munch_starry_stego.png · 2.2 MB</span> <a href="/sample/munch_starry_stego.png" download>download</a></figcaption>
+    <img src="/sample/munch_starry_stego.png" alt="Starry Night — PNG with Scream embedded via rsteg, 2.07 MB" loading="lazy">
+    <figcaption>
+      <div class="size">2.07 MB <span class="delta">+105 KB</span></div>
+      <div class="meta"><span class="label">stego</span> munch_starry_stego.png · <a href="/sample/munch_starry_stego.png" download>download</a></div>
+    </figcaption>
   </figure>
 </div>
+
+<p class="size-summary">
+  The stego PNG carries a <strong>321 KB hidden JPG payload</strong> inside a <strong>1.96 MB cover</strong> and ends up only <strong>+105 KB larger</strong> on disk — the extra bytes are PNG recompression overhead on the noisier bottom bits, <em>not</em> the payload itself.
+</p>
 
 <details class="reveal">
   <summary>Reveal the payload that was extracted</summary>
