@@ -9,6 +9,7 @@ members = [
     "crates/rsteg-cli",
     "crates/rsteg-bench",
     "crates/rsteg-web",
+    "crates/rsteg-site-build",
 ]
 
 [workspace.package]
