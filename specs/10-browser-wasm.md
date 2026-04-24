@@ -7,7 +7,7 @@ Runs `rsteg` embed/extract entirely in the browser as a `wasm32-unknown-unknown`
 1. **In-browser parity with the library.** PNG / BMP / WAV embed + extract, XChaCha20-Poly1305 AEAD with Argon2id KDF, steghide-compat *read* for BMP / WAV. Same bytes in, same bytes out as the native library — cross-validated by a shared fixture corpus.
 2. **Zero trusted-server dependency.** Payloads, passphrases, and cover media never leave the user's machine. This is the core reason to ship a WASM build at all.
 3. **Supply-chain minimization unchanged.** The WASM build reuses the existing crate graph. No bundler plugin registry, no npm-lockfile blowup, no framework coupling.
-4. **No proc-macro deps.** The workspace-wide proc-macro ban (spec 02 rule 3) still applies. JS interop is hand-rolled `extern "C"` over `wasm32-unknown-unknown` — not `wasm-bindgen`.
+4. **No proc-macro deps.** The workspace-wide proc-macro ban (spec 02 rule 3) still applies. JS interop is hand-rolled `extern "C"` over `wasm32-unknown-unknown` — **not** `wasm-bindgen`, and **not** `getrandom`'s `js` / `wasm_js` features (both pull `wasm-bindgen` transitively). OS entropy on wasm32 comes through a `register_custom_getrandom!` (`macro_rules!`, not proc-macro) backend that forwards to a JS-provided `rsteg_fill_random(ptr, len)` import.
 
 ### Non-goals
 
@@ -31,33 +31,48 @@ crates/
     pkg/             # built artifact: rsteg.wasm + rsteg.js (generated, gitignored)
 ```
 
-`rsteg-wasm` aggregates the same adapters `rsteg-cli` does, through the same Cargo features:
+`rsteg-wasm` aggregates the same adapters `rsteg-cli` does. The real crate graph today is `rsteg-crypto-aead` (single crate, no feature-split into `aead` + `compat-steghide` yet — see spec 01 §"Workspace layout" note). `compat-steghide` arrives when `rsteg-compat-steghide` lands; the `compat` feature below is reserved but unimplemented.
 
 ```toml
 # crates/rsteg-wasm/Cargo.toml (sketch)
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]   # rlib so host-side tests can link the ABI shim
 
 [features]
-default = ["png", "bmp", "wav", "crypto", "compat-steghide"]
-png             = ["rsteg-png"]
-bmp             = ["rsteg-bmp"]
-wav             = ["rsteg-wav"]
-crypto          = ["rsteg-crypto/aead", "getrandom/js"]
-compat-steghide = ["rsteg-crypto/compat-steghide"]
+default = ["png", "bmp", "wav", "crypto"]
+png     = ["rsteg-png"]
+bmp     = ["rsteg-bmp"]
+wav     = ["rsteg-wav"]
+crypto  = ["rsteg-crypto-aead"]
+# compat = ["rsteg-compat-steghide"]  # reserved — lands with the compat crate
 
 [dependencies]
-rsteg-core   = { path = "../rsteg-core" }
-rsteg-png    = { path = "../rsteg-png",    optional = true }
-rsteg-bmp    = { path = "../rsteg-bmp",    optional = true }
-rsteg-wav    = { path = "../rsteg-wav",    optional = true }
-rsteg-crypto = { path = "../rsteg-crypto", optional = true }
-getrandom    = { version = "0.2", optional = true, default-features = false }
+rsteg-core        = { path = "../rsteg-core" }
+rsteg-png         = { path = "../rsteg-png",         optional = true }
+rsteg-bmp         = { path = "../rsteg-bmp",         optional = true }
+rsteg-wav         = { path = "../rsteg-wav",         optional = true }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead", optional = true }
+
+[profile.release]
+panic = "abort"   # required — unwinding across extern "C" to wasm32 is UB
+lto   = true
+opt-level = "z"
 ```
 
 No crate depends on `rsteg-wasm`. It is a leaf, like `rsteg-cli`.
 
 ### ABI — hand-rolled, no `wasm-bindgen`
+
+**Target gate.** `rsteg-wasm` is wasm32-only for shipping. The entrypoints are `#[cfg(target_arch = "wasm32")]`; on any other target the crate exposes a parallel host-side wrapper (same logic, safe Rust, no `#[no_mangle]`) so `cargo test -p rsteg-wasm` runs on the developer's machine. A `compile_error!` catches anyone who tries to ship the `cdylib` to a non-wasm32 triple.
+
+**Authorized unsafe.** The alloc shim and the `extern "C"` bodies need `#[allow(unsafe_code)]` at module level. Per spec 02 rule 5, `crates/rsteg-wasm/src/ffi.rs` is added to the authorized-unsafe list, every unsafe block carries a `// SAFETY:` comment, and the module is fuzzed alongside the format adapters.
+
+**Input cap.** A hard `MAX_CARRIER_BYTES = 256 MiB` check at each entrypoint returns a dedicated error code (`ERR_INPUT_TOO_LARGE`) before any allocation. Prevents a `memory.grow` failure deep in `Vec::reserve` → panic → abort.
+
+**Error ABI.** A stable `#[repr(u32)]` `WasmError` enum in `rsteg-wasm` — decoupled from `rsteg_core::Error` so adding a new core variant does not shift wire-format error codes. Return shape: `u64` with the high bit (`1 << 63`) as the success/error sentinel.
+
+- Success: high bit `0`. Lower 32 = pointer (may be `0` for empty output). Bits 32..63 = length.
+- Error: high bit `1`. Lower 32 = `WasmError` discriminant. Bits 32..63 = reserved (0).
 
 Four `extern "C"` entrypoints cover the surface. All take / return pointer + length pairs into linear memory; JS drives allocation through two exported shim functions.
 
@@ -91,7 +106,15 @@ Four `extern "C"` entrypoints cover the surface. All take / return pointer + len
 ) -> u64;
 ```
 
-Error codes reuse `rsteg_core::Error` discriminants, surfaced through the upper 32 bits when the low 32 are `0`. A `rsteg_last_error_message(buf, cap) -> usize` provides a diagnostic string when the caller wants it — rare path, not on the hot loop.
+Error codes are the stable `WasmError` `#[repr(u32)]` enum, not `rsteg_core::Error` discriminants. `rsteg-wasm::translate_err(&rsteg_core::Error) -> WasmError` does the mapping (lossy by design — many core variants collapse into one wire code, e.g. every AEAD failure lands on `ERR_BAD_PASSPHRASE` per spec 06's indistinguishability requirement).
+
+**Ownership contract.**
+
+- Input buffers (`cover`, `payload`, `password`): allocated by JS via `rsteg_alloc`, freed by JS via `rsteg_free` after the call returns. Password buffer is zeroized by Rust before any return (success or error) — JS cannot zeroize on its own.
+- Output buffer: allocated by Rust (`Vec<u8>::into_raw_parts`), freed by JS via `rsteg_free` after copying the bytes out.
+- On panic: the `panic = "abort"` profile turns any panic into a WASM trap. JS observes the trap and must treat every outstanding buffer as leaked — the WASM instance is dead anyway.
+
+`rsteg_last_error_message(buf, cap) -> usize` provides a diagnostic string when the caller wants it — rare path, not on the hot loop.
 
 The JS wrapper (`pkg/rsteg.js`) is ~50 lines of hand-written ES module code: `WebAssembly.instantiateStreaming`, two helpers (`toWasm(u8)` / `fromWasm(handle)`), and one async init. No bundler step is required. Shipped as a single `.wasm` + `.js` pair.
 
@@ -99,16 +122,37 @@ The JS wrapper (`pkg/rsteg.js`) is ~50 lines of hand-written ES module code: `We
 
 ### Randomness
 
-`getrandom` with the `js` feature targets `wasm32-unknown-unknown` via `crypto.getRandomValues`. This is the only dep change: adding `"js"` to the `getrandom` feature list when `rsteg-wasm/crypto` is on. Already allowlisted in spec 02; no new crate enters the graph.
+`getrandom`'s `js` (0.2) and `wasm_js` (0.3) features both depend on `wasm-bindgen`, which is a proc-macro crate — **not** acceptable. Instead we register a custom backend using `register_custom_getrandom!` (a `macro_rules!` macro, permitted):
 
-`getrandom` 0.2 and 0.3 both support the browser, with different feature-flag names (`js` vs `wasm_js`). Pinning is spec 02's job; whichever major is current at implementation time is fine, as long as the lockfile shows one `getrandom`.
+```rust
+// crates/rsteg-wasm/src/rng.rs  (sketch, wasm32 only)
+extern "C" {
+    // Imported from JS — the host provides a Uint8Array filled from
+    // crypto.getRandomValues and writes it into the given pointer.
+    fn rsteg_fill_random(ptr: *mut u8, len: usize) -> i32;
+}
+
+fn browser_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    // SAFETY: buf is a valid writable slice; JS honors (ptr, len) exactly.
+    let rc = unsafe { rsteg_fill_random(buf.as_mut_ptr(), buf.len()) };
+    if rc == 0 { Ok(()) } else { Err(getrandom::Error::UNEXPECTED) }
+}
+
+getrandom::register_custom_getrandom!(browser_getrandom);
+```
+
+The JS glue provides `rsteg_fill_random` by calling `crypto.getRandomValues` on a `Uint8Array` view into WASM memory. ~10 lines of JS. No `wasm-bindgen`, no `js-sys`, no transitive proc-macro blow-up.
+
+`getrandom` itself stays allowlisted in spec 02 as a direct dep of `rsteg-crypto-aead`. No new crate, no new feature flag, no deviation from spec 02 rule 3.
 
 ### Argon2id in the browser
 
 Budget: default **t=3, m=65536, p=1** (spec 06). A conservative benchmark on mid-range 2024 laptops is **300–800 ms**. Acceptable with a progress indicator; unacceptable on the main thread for a UI that also needs to stay responsive.
 
-Guidance we publish (in `rsteg-wasm/README.md`, not changes to spec 06):
-- Call `rsteg_embed` / `rsteg_extract` from a Web Worker for anything above trivial payloads.
+`m=65536` is 64 MiB of scratch memory. Safe on desktop browsers; marginal on iOS Safari (~1 GiB practical cap under memory pressure, silent tab kill if exceeded) and low-end Android. Mitigation:
+
+- Call `rsteg_embed` / `rsteg_extract` from a Web Worker for anything above trivial payloads. The main thread stays responsive even if the Worker OOMs.
+- Wrap the Argon2id call site so an allocation failure returns `ERR_KDF_MEMORY` (a dedicated `WasmError` variant) rather than trapping. Lets the demo page tell the user "this device doesn't have enough memory to open this file" instead of a blank tab crash.
 - Keep the default cost parameters. Lowering them for "mobile performance" weakens the KDF and is out of scope — users who want speed can skip the passphrase and accept linear-mode embedding, same tradeoff as the CLI.
 - PBKDF2 is not an option here. spec 06 rejected it for native; same answer for WASM.
 
@@ -126,7 +170,9 @@ Target — all default features, release build, `wasm-opt -Oz`, brotli-compresse
 | Hand-rolled ABI + alloc shim                             | ~3 KB  |
 | **Total (brotli-compressed)**                            | **~200–260 KB** |
 
-CI gate: `ls -la rsteg-wasm/pkg/rsteg.wasm` after `wasm-opt -Oz` must be ≤ **500 KB uncompressed, ≤ 260 KB brotli-compressed**. Failing the budget blocks merge. Identical mechanism to the `cargo tree` count budget in spec 02.
+Table is a **target** for the implementation PR, not a proven fact. The budget gate reevaluates if first-cut measurements land above 320 KB brotli. dlmalloc is the default allocator (~10 KB); `wee_alloc` is explicitly not used (unmaintained, known memory-fragmentation issues).
+
+CI gate: `ls -la rsteg-wasm/pkg/rsteg.wasm` after `wasm-opt -Oz` must be ≤ **500 KB uncompressed, ≤ 260 KB brotli-compressed**. Failing the budget blocks merge. Identical mechanism to the `cargo tree` count budget in spec 02. Pin a minimum `wasm-opt` version in CI (binaryen ≥ 119) so upstream regressions don't land silently.
 
 ### Build commands
 
@@ -157,19 +203,21 @@ The WASM build cannot regress the library's semantics. Tests go in three places:
 
 ### Live demo — upgrade the existing Munch example
 
-The landing page already ships a "Scream hidden in Starry Night" demo (see `public/index.html` section `#stego-demo`), but today it's **static**: three pre-baked artifacts served from `/sample/`:
+The landing page already ships a "Scream hidden in Starry Night" demo (see `public/index.html` section `#stego-demo`), but today it's **static**: three pre-baked artifacts live on disk at `public/sample/` and are served from `/sample/`:
 
 - `/sample/munch_starry.png` — 1.96 MB PNG cover (Starry Night).
 - `/sample/munch_starry_stego.png` — 2.07 MB stego output, payload already embedded.
 - `/sample/munch_scream.jpg` — 321 KB extracted payload (Scream), shown inside `<details>`.
 
-The WASM milestone **replaces the static reveal with a live extract**. No new demo, no new fixtures, no new copy:
+The WASM milestone **replaces the static reveal with a live extract**. No new demo, no new fixtures, no new copy. The *exit criterion* for the milestone lives in `tests/wasm-smoke/` (headless Chromium via Playwright), not in `public/index.html` copy — so refactors of the landing page do not break the WASM crate's CI gate. The landing-page upgrade lands as a companion PR once the crate ships.
+
+Flow once both PRs land:
 
 1. The page loads `/sample/munch_starry_stego.png` into a `Uint8Array` (same URL, same bytes).
-2. On user click of the `<summary>` "Reveal the payload" toggle, the page prompts for the passphrase (the one `rsteg-bench` uses to produce the fixture — published in `sample/README.md`).
-3. The existing ES-module init loads `/pkg/rsteg.wasm`, calls `rsteg_extract`, gets the JPG bytes back.
+2. On user click of the `<summary>` "Reveal the payload" toggle, the page prompts for the passphrase. (The passphrase is documented in the PR that bakes the fixtures — not referenced here as a promise; this spec does not require a specific docs location.)
+3. The page loads `/pkg/rsteg.wasm`, calls `rsteg_extract`, gets the JPG bytes back.
 4. The extracted bytes are fed to a `Blob` + `URL.createObjectURL` and swapped into the same `<img class="payload-reveal">` the `<details>` block already contains.
-5. The page verifies the extracted SHA-1 matches the `10570e48…` prefix already displayed in the copy (`index.html:254`). Mismatch → visible error, CI fails.
+5. The page verifies the extracted SHA-1 matches the `10570e48…` prefix already displayed in the copy. Mismatch → visible error.
 
 This proves four things at once to any visitor:
 
@@ -178,24 +226,23 @@ This proves four things at once to any visitor:
 - Zero server involvement — the fixture is a static asset, the crypto happens client-side.
 - The supply-chain story holds up where it's hardest — in a browser, with no bundler.
 
-An **embed** path on the same demo (cover + payload + passphrase → new stego PNG) is an optional extension; skipped if it blows the 260 KB bundle gate or the page-load budget. Extract alone is the phase-2 exit criterion because it exercises every crate on the hot path (`rsteg-core` framing, `rsteg-png`, `rsteg-crypto` AEAD + KDF) without needing `crypto.getRandomValues` at all — the RNG path is reserved for the optional embed upgrade.
-
-The `<pre class="demo-cmd">` block at `index.html:258` stays as-is: it documents the CLI invocation that produced the stego fixture, and the WASM demo matches its result. No copy change needed there.
+An **embed** path on the same demo (cover + payload + passphrase → new stego PNG) is an optional extension; skipped if it blows the 260 KB bundle gate or the page-load budget. Extract alone exercises every crate on the hot path (`rsteg-core` framing, `rsteg-png`, `rsteg-crypto-aead` AEAD + KDF) without needing `crypto.getRandomValues` at all — the custom-RNG backend above is only on the embed path.
 
 ### Security notes (for `SECURITY.md` at phase 1.5)
 
-- **Passphrase in the browser.** Read from an `<input type="password">` by the app; passed into WASM as bytes; zeroized inside Rust via `zeroize` (same as native). After the WASM call returns, the JS-side string is still recoverable from memory until GC — we document this and recommend clearing the input field. Not a regression vs any other in-browser crypto tool.
-- **Side-channels.** `constant_time_eq` + `zeroize` paths still work under WASM. No new side-channel surface; JIT timing attacks on WASM are out of our threat model.
-- **Subresource integrity.** The `.wasm` and `.js` artifacts are published with `integrity=` SRI hashes in the demo page. If the library is consumed externally, users are expected to pin the hash.
+- **Passphrase in the browser.** Delivered to WASM as a `Uint8Array` allocated via `rsteg_alloc`, populated byte-by-byte from the input event, zeroized inside Rust via `zeroize` before any entrypoint return. Strongly recommended (documented in `rsteg-wasm/README.md`) to run the call inside a dedicated Web Worker so the main thread's V8/JSC heap never sees the bytes. JS strings immutably retain until GC — passing the passphrase as a `Uint8Array` and clearing it explicitly is the mitigation.
+- **Side-channels.** `constant_time_eq` + `zeroize` paths still work under WASM, but WASM does **not** guarantee constant-time execution — V8/SpiderMonkey tier-up compilers can introduce data-dependent branches via inline caches. We preserve the algorithmic property; wall-clock constant-time is best-effort. Timing-attack resistance at the browser-timing-API level is out of our threat model. The spec 07 timing invariant test runs natively; a wasmtime-hosted variant runs nightly with a relaxed threshold.
+- **CSP + Trusted Types.** Hosting guidance in `rsteg-wasm/README.md`: minimum CSP is `script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'` (Chrome requires `'wasm-unsafe-eval'` for `WebAssembly.instantiate*`). The hand-rolled JS glue does no `eval` / `innerHTML` / `document.write`, so it is Trusted-Types-compatible without additional work.
+- **Subresource integrity.** The `.wasm` and `.js` artifacts are published with `integrity=` SRI hashes on the `<script>` tag. `<link rel="modulepreload">` SRI enforcement for `.wasm` is inconsistent across 2026-vintage browsers; treat SRI on `.js` as the authoritative pin and let the JS glue assert on the WASM streaming instantiation result.
 
 ### Roadmap placement
 
 - Not phase 1. Phase 1 is native-library-and-CIL correctness.
 - **Phase 2 candidate**, concurrent with JPEG work. Requires phase 1 to be stable (the WASM build consumes the same crates; no point targeting a moving library).
 - Exit criteria:
-  1. Parity corpus passes (all native fixtures byte-identical).
+  1. Parity corpus passes (all native fixtures byte-identical). Enforced by a differential fuzz target in `fuzz/fuzz_targets/diff_native_vs_wasmtime.rs`: random inputs run through native Rust and through the same crate compiled to wasm32 and run under `wasmtime`, outputs must match bit-for-bit.
   2. Bundle size under the 260 KB brotli gate.
-  3. Existing Munch demo on the landing page extracts `/sample/munch_scream.jpg` live from `/sample/munch_starry_stego.png` in the browser — SHA-1 matches the prefix already printed in the copy, CI asserts both bytes and hash.
-  4. `cargo tree -p rsteg-wasm --target wasm32-unknown-unknown` adds zero new direct deps beyond the `getrandom/js` feature flip.
+  3. Headless-browser smoke test in `tests/wasm-smoke/` extracts the Munch fixture (`/sample/munch_starry_stego.png`) and asserts SHA-1 of the payload matches `10570e48…`. The landing-page demo upgrade is a separate companion PR — decoupled so `public/index.html` structural changes don't break this crate's CI.
+  4. `cargo tree -p rsteg-wasm --target wasm32-unknown-unknown` reports zero new direct deps vs the native target (custom-RNG backend uses only `getrandom` and a hand-written extern `fn`, no `wasm-bindgen` / `js-sys`).
 
 Update [`specs/09-roadmap.md`](09-roadmap.md) → "Web/WASM targets" row removed from "Deferred / likely-never", moved under phase 2 scope, in the same PR as the first `rsteg-wasm` commit.
