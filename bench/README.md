@@ -17,8 +17,7 @@ cargo run --release -p rsteg-bench -- --all --format markdown --out bench.md
 
 `stegano` is installed via `cargo install stegano-cli`. `steghide` must
 be built from source — Homebrew dropped the package in 2024 and there is
-no published arm64 build. Build steps used for the numbers below are in
-the [`Native steghide build`](#native-steghide-build) section.
+no published arm64 build.
 
 ## Tools
 
@@ -140,63 +139,6 @@ against this cover; rsteg vs stegano is the valid comparison.
 | extract | 10 KB   | stegano |         66.39 |    67.65 | 0.36 |
 
 `steghide` does not support PNG, so it does not appear in this table.
-
-## Native steghide build
-
-The numbers above used a local build of steghide from its upstream source
-tree on Apple Silicon. For full reproducibility:
-
-```sh
-# Required Homebrew packages
-brew install mhash libmcrypt jpeg-turbo zlib gettext automake autoconf
-
-cd /path/to/steghide
-automake --add-missing --copy   # regenerate missing aux files
-
-CPPFLAGS="-I/opt/homebrew/opt/libmcrypt/include \
-          -I/opt/homebrew/opt/mhash/include \
-          -I/opt/homebrew/opt/jpeg-turbo/include \
-          -I/opt/homebrew/opt/zlib/include \
-          -I/opt/homebrew/opt/gettext/include" \
-LDFLAGS="-L/opt/homebrew/opt/libmcrypt/lib \
-         -L/opt/homebrew/opt/mhash/lib \
-         -L/opt/homebrew/opt/jpeg-turbo/lib \
-         -L/opt/homebrew/opt/zlib/lib \
-         -L/opt/homebrew/opt/gettext/lib" \
-  ./configure
-
-make -j
-```
-
-The final link step on macOS invokes `libtool` by bare name and the BSD
-`/usr/bin/libtool` is not compatible. Complete the link manually:
-
-```sh
-cd src
-g++ -O2 -Wall \
-  -L/opt/homebrew/opt/libmcrypt/lib -L/opt/homebrew/opt/mhash/lib \
-  -L/opt/homebrew/opt/jpeg-turbo/lib -L/opt/homebrew/opt/zlib/lib \
-  -L/opt/homebrew/opt/gettext/lib \
-  -o steghide *.o \
-  /opt/homebrew/opt/gettext/lib/libintl.dylib \
-  -ljpeg -lmcrypt -lmhash -lz
-```
-
-Verify the binary:
-
-```sh
-$ file src/steghide
-src/steghide: Mach-O 64-bit executable arm64
-$ src/steghide --version
-steghide version 0.6.0
-```
-
-Point PATH at the local binary when running the bench:
-
-```sh
-PATH="/path/to/steghide/src:$PATH" \
-  cargo run --release -p rsteg-bench -- --all --format markdown --out bench.md
-```
 
 ## Where we might lose
 

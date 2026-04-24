@@ -1,8 +1,7 @@
 # rsteg bench report — bmp-small
 
 Platform: macos/aarch64 ncpu=28. `steghide` is a local native-arm64 build of
-0.6.0; see [`README.md`](README.md#native-steghide-build) for the build
-steps. rsteg rows are full p50/p95/MAD; steghide rows report p50 only
+0.6.0. rsteg rows are full p50/p95/MAD; steghide rows report p50 only
 from the same native run.
 
 ## bmp-small — embed 1 KB
