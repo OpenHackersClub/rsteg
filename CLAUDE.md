@@ -81,7 +81,7 @@ Until the workspace is scaffolded, those commands will fail. If you're starting 
 - `rsteg-core` defines `FormatAdapter`, `Detector`, `CryptoScheme` traits. Every other crate is an adapter.
 - Adapters are registered compile-time in `rsteg-cli::build_registry()` via `#[cfg(feature = "…")]` blocks. No `inventory`/`linkme` dep.
 - All embed/extract I/O is `&[u8]` in, `Vec<u8>` out. Core is pure; the CLI does all file I/O.
-- 20-byte `PayloadHeader` (`RSTG` magic + version + flags + crypto fourcc + body len + CRC32 + reserved) frames every write. Detection on extract = looking for the magic in the first `160/density` embedding units.
+- 32-byte `PayloadHeader` (`RSTG` magic + version + flags + crypto fourcc + scheme fourcc + density + body len + CRC32 + reserved) frames every write. See `crates/rsteg-core/src/header.rs` for the exact offsets. Detection on extract = looking for the magic in the first `160/density` embedding units.
 - Crypto default: `aead-chacha20` (ChaCha20-Poly1305 + PBKDF2-HMAC-SHA256 @ 600k iters). `compat-steghide` is detection + read only, never write.
 
 See [`specs/01-architecture.md`](specs/01-architecture.md) and [`specs/04-core-traits.md`](specs/04-core-traits.md) for the full picture.
