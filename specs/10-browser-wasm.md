@@ -239,10 +239,18 @@ An **embed** path on the same demo (cover + payload + passphrase → new stego P
 
 - Not phase 1. Phase 1 is native-library-and-CIL correctness.
 - **Phase 2 candidate**, concurrent with JPEG work. Requires phase 1 to be stable (the WASM build consumes the same crates; no point targeting a moving library).
-- Exit criteria:
-  1. Parity corpus passes (all native fixtures byte-identical). Enforced by a differential fuzz target in `fuzz/fuzz_targets/diff_native_vs_wasmtime.rs`: random inputs run through native Rust and through the same crate compiled to wasm32 and run under `wasmtime`, outputs must match bit-for-bit.
-  2. Bundle size under the 260 KB brotli gate.
-  3. Headless-browser smoke test in `tests/wasm-smoke/` extracts the Munch fixture (`/sample/munch_starry_stego.png`) and asserts SHA-1 of the payload matches `10570e48…`. The landing-page demo upgrade is a separate companion PR — decoupled so `public/index.html` structural changes don't break this crate's CI.
-  4. `cargo tree -p rsteg-wasm --target wasm32-unknown-unknown` reports zero new direct deps vs the native target (custom-RNG backend uses only `getrandom` and a hand-written extern `fn`, no `wasm-bindgen` / `js-sys`).
 
-Update [`specs/09-roadmap.md`](09-roadmap.md) → "Web/WASM targets" row removed from "Deferred / likely-never", moved under phase 2 scope, in the same PR as the first `rsteg-wasm` commit.
+Current implementation status (landed on `spec/browser-wasm`, PR #14):
+
+- ✅ `rsteg-wasm` crate scaffolded with `cdylib + rlib`; FFI entrypoints exposed on every target so host tests can exercise them without a wasm toolchain.
+- ✅ `rsteg_alloc` / `rsteg_free` / `rsteg_extract` / `rsteg_embed` with a `u32` status + out-parameter ABI — identical shape on wasm32 and 64-bit host.
+- ✅ Custom `register_custom_getrandom!` backend forwarding to a JS-provided `rsteg_fill_random(ptr, len)` import; no `wasm-bindgen`, no `js-sys` in the wasm32 crate graph.
+- ✅ wasm32 CI job with binaryen-pinned `wasm-opt -Oz`, size gate (≤ 260 KB brotli / ≤ 500 KB raw), and a "no wasm-bindgen / js-sys in the tree" assertion. First-cut measurement on the `release-wasm` profile: **~41 KB brotli, ~123 KB raw** without wasm-opt — well under the gate.
+- ✅ Host-side FFI tests: 11 passing (6 extract, 5 embed).
+
+Still outstanding for the phase-2 tag:
+
+1. **Headless-browser smoke test** in `tests/wasm-smoke/` — extract the Munch fixture (`/sample/munch_starry_stego.png`) in a real browser and assert SHA-1 of the payload matches `10570e48…`. This exercises the JS-provided `rsteg_fill_random` import path that the host tests bypass.
+2. **Landing-page demo upgrade** — wire `rsteg_extract` into the `<details>` reveal at `public/index.html#stego-demo`. Companion PR, decoupled from this crate's CI gate so `index.html` refactors don't break the WASM build.
+3. **Differential fuzz target** at `fuzz/fuzz_targets/diff_native_vs_wasmtime.rs` — random inputs through native Rust vs the same crate compiled to wasm32 under `wasmtime`, outputs must match bit-for-bit.
+4. **Roadmap update** — remove "Web/WASM targets" from `specs/09-roadmap.md`'s "Deferred / likely-never" list, move under phase 2 scope.

@@ -35,9 +35,14 @@ pub enum WasmError {
     BadPassphrase = 22,
     /// Build does not include the `crypto` feature but the carrier is encrypted.
     CryptoDisabled = 23,
-    /// Argon2id could not allocate its scratch memory. Reserved — emitted
-    /// when the embed path lands in the next PR.
+    /// Argon2id could not allocate its scratch memory. Reserved — the
+    /// native `argon2` crate currently panics on OOM rather than signalling,
+    /// so this surfaces only if the WASM runtime traps and callers retry.
     KdfMemory = 24,
+    /// OS / JS entropy source is unavailable. On wasm32 this typically
+    /// means the JS glue did not wire up `rsteg_fill_random`, or the host
+    /// refused `crypto.getRandomValues` under a restrictive CSP.
+    RngUnavailable = 25,
     /// Fallback for any `rsteg_core::Error` variant not otherwise mapped.
     /// Stable code but imprecise; check `rsteg_last_error_message` for detail.
     Other = 255,
@@ -62,7 +67,7 @@ pub fn translate_err(e: &Error) -> WasmError {
         }
         Error::PassphraseRequired => WasmError::PassphraseRequired,
         Error::UnexpectedPassphrase => WasmError::UnexpectedPassphrase,
-        Error::RngUnavailable => WasmError::KdfMemory,
+        Error::RngUnavailable => WasmError::RngUnavailable,
         Error::PayloadTooLarge { .. } => WasmError::InputTooLarge,
         Error::DensityOutOfRange(_) | Error::PermutationSeedRequired => WasmError::Other,
     }

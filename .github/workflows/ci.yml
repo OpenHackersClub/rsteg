@@ -82,3 +82,94 @@ jobs:
             cargo package -p "$c" --list --no-verify --allow-dirty --offline
             echo "::endgroup::"
           done
+
+  wasm:
+    name: wasm32 build + size gate
+    runs-on: ubuntu-latest
+    env:
+      # Pinned binaryen release; spec 10 §"Bundle size" mandates ≥ 119 so
+      # wasm-opt bug-fix regressions don't land silently.
+      BINARYEN_VERSION: "119"
+      # Hard gates from spec 10 §"Bundle size". First-cut measurement on
+      # the release-wasm profile without wasm-opt is ~40 KB brotli /
+      # ~123 KB raw, so these thresholds leave ~6× headroom for phase 2.
+      MAX_RAW_BYTES: "512000"     # 500 KB
+      MAX_BROTLI_BYTES: "266240"  # 260 KB
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Separate cache key — the wasm32 target builds a different
+          # artifact set from the native `test` job; sharing a cache would
+          # churn the LRU.
+          key: wasm32
+      - name: install binaryen (wasm-opt)
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSL -o binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+          tar -xzf binaryen.tar.gz
+          echo "$RUNNER_TEMP/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: install brotli
+        # brotli is not preinstalled on ubuntu-latest.
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends brotli
+      - name: cargo build --profile release-wasm
+        run: cargo build -p rsteg-wasm --target wasm32-unknown-unknown --profile release-wasm --locked
+      - name: wasm-opt -Oz
+        # Stable Rust's wasm32 codegen emits `memory.copy` / `memory.fill`
+        # (bulk-memory) and other post-MVP features by default since 2024.
+        # Binaryen 119 requires these to be opted in on the CLI. The flags
+        # below match what `rustc --print target-features` lists as enabled
+        # for wasm32-unknown-unknown on stable — safe on every WebAssembly
+        # engine we target (all major browsers since 2020).
+        run: |
+          set -euo pipefail
+          mkdir -p target/wasm-dist
+          wasm-opt --version
+          wasm-opt -Oz \
+            --enable-bulk-memory \
+            --enable-mutable-globals \
+            --enable-nontrapping-float-to-int \
+            --enable-sign-ext \
+            --enable-reference-types \
+            --enable-multivalue \
+            -o target/wasm-dist/rsteg.wasm \
+            target/wasm32-unknown-unknown/release-wasm/rsteg_wasm.wasm
+      - name: size gate
+        run: |
+          set -euo pipefail
+          W=target/wasm-dist/rsteg.wasm
+          RAW=$(stat -c%s "$W")
+          BROTLI=$(brotli -q 11 -c "$W" | wc -c)
+          echo "raw:    $RAW bytes (cap $MAX_RAW_BYTES)"
+          echo "brotli: $BROTLI bytes (cap $MAX_BROTLI_BYTES)"
+          FAIL=0
+          if [ "$RAW" -gt "$MAX_RAW_BYTES" ]; then
+            echo "::error::wasm raw size $RAW bytes exceeds cap $MAX_RAW_BYTES (spec 10 §Bundle size)"
+            FAIL=1
+          fi
+          if [ "$BROTLI" -gt "$MAX_BROTLI_BYTES" ]; then
+            echo "::error::wasm brotli size $BROTLI bytes exceeds cap $MAX_BROTLI_BYTES (spec 10 §Bundle size)"
+            FAIL=1
+          fi
+          exit "$FAIL"
+      - name: no wasm-bindgen / js-sys leak
+        # Spec 10 §"ABI" rejects wasm-bindgen to preserve the proc-macro
+        # ban. This check asserts the wasm32 crate graph stays clean —
+        # any transitive pull of either crate fails the build.
+        run: |
+          set -euo pipefail
+          cargo tree -p rsteg-wasm --target wasm32-unknown-unknown --prefix none --locked \
+            | sort -u > /tmp/wasm-deps.txt
+          echo "wasm32 dep count: $(wc -l < /tmp/wasm-deps.txt)"
+          if grep -qE '^(wasm-bindgen|wasm-bindgen-macro|js-sys) ' /tmp/wasm-deps.txt; then
+            echo "::error::wasm-bindgen / js-sys leaked into the wasm32 graph — violates spec 02 rule 3 and spec 10 §ABI"
+            grep -E '^(wasm-bindgen|wasm-bindgen-macro|js-sys) ' /tmp/wasm-deps.txt
+            exit 1
+          fi

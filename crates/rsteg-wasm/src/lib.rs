@@ -1,15 +1,15 @@
 //! Browser-WASM façade for `rsteg`.
 //!
-//! Scope of this first cut (spec 10 §"Roadmap placement"):
+//! Scope (spec 10 §"Roadmap placement"):
 //! - `rsteg_alloc` / `rsteg_free` — linear-memory allocator shim used by JS.
-//! - `rsteg_extract` — extract-only surface.
+//! - `rsteg_extract` — extract + AEAD open.
+//! - `rsteg_embed` — embed + AEAD seal. Needs OS entropy; on wasm32 this
+//!   comes through the custom `register_custom_getrandom!` backend in
+//!   `src/rng.rs`, which forwards to a JS-provided `rsteg_fill_random`
+//!   import (no `wasm-bindgen`).
 //!
-//! `rsteg_embed` and `rsteg_capacity` are deliberately absent in this
-//! scaffold. Embed requires OS entropy and the custom
-//! `register_custom_getrandom!` backend is the next PR. Capacity probing
-//! needs a new `FormatAdapter::capacity` method in `rsteg-core` (not yet
-//! shipped) — wiring it through the ABI is the follow-up after that.
-//! Extract does not touch the RNG on either code path (spec 06 §"Open flow").
+//! `rsteg_capacity` is still deliberately absent — it needs a new
+//! `FormatAdapter::capacity` method in `rsteg-core` (not yet shipped).
 //!
 //! Per spec 02 rule 5, the unsafe code in this crate is authorized and
 //! narrowly scoped — the `ffi` module below. Every `unsafe` block carries
@@ -33,6 +33,8 @@
 use rsteg_core::PayloadHeader;
 
 mod error;
+#[cfg(feature = "crypto")]
+mod rng;
 
 pub use error::{translate_err, WasmError};
 
@@ -186,6 +188,150 @@ fn fold_u64(bytes: &[u8]) -> u64 {
     h
 }
 
+/// Embed `payload` into `cover` and return the stego carrier bytes.
+///
+/// Mirrors `rsteg-cli::run_embed`: when `password` is supplied the body is
+/// XChaCha20-Poly1305 sealed with Argon2id KDF and the permuted scheme is
+/// preferred (closes the "RSTG magic at offset 0" fingerprint); without a
+/// password the output is plaintext-framed at the linear scheme.
+///
+/// AEAD seal on wasm32 draws 40 bytes of entropy via the custom `getrandom`
+/// backend in `src/rng.rs`. On host targets `getrandom`'s built-in OS
+/// backend is used.
+#[cfg(feature = "crypto")]
+pub fn embed_payload(
+    cover: &[u8],
+    payload: &[u8],
+    password: Option<&[u8]>,
+    format_fourcc: u32,
+) -> Result<Vec<u8>, WasmError> {
+    use rsteg_core::{CryptoScheme, Density, EmbedOpts, FormatAdapter, SchemeFourcc};
+
+    if cover.len() > MAX_INPUT_BYTES || payload.len() > MAX_INPUT_BYTES {
+        return Err(WasmError::InputTooLarge);
+    }
+    if let Some(p) = password {
+        if p.len() > MAX_INPUT_BYTES {
+            return Err(WasmError::InputTooLarge);
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    let (adapter, linear_id, linear_fcc, permuted_id, permuted_fcc): (
+        &dyn FormatAdapter,
+        &'static str,
+        SchemeFourcc,
+        Option<&'static str>,
+        Option<SchemeFourcc>,
+    ) = match format_fourcc {
+        #[cfg(feature = "bmp")]
+        fourcc::BMP => (
+            &rsteg_bmp::BMP_ADAPTER,
+            "bmp-lsb-linear",
+            SchemeFourcc::BMP_LSB_LINEAR,
+            Some("bmp-lsb-permuted"),
+            Some(SchemeFourcc::BMP_LSB_PERMUTED),
+        ),
+        #[cfg(feature = "wav")]
+        fourcc::WAV => (
+            &rsteg_wav::WAV_ADAPTER,
+            "wav-lsb-linear",
+            SchemeFourcc::WAV_LSB_LINEAR,
+            Some("wav-lsb-permuted"),
+            Some(SchemeFourcc::WAV_LSB_PERMUTED),
+        ),
+        #[cfg(feature = "png")]
+        fourcc::PNG => (
+            // PNG permuted is not in phase 1 — matches rsteg-cli behavior:
+            // password-encrypted PNG still uses the linear scheme, and the
+            // AEAD alone carries confidentiality.
+            &rsteg_png::PNG_ADAPTER,
+            "png-lsb-linear",
+            SchemeFourcc::PNG_LSB_LINEAR,
+            None,
+            None,
+        ),
+        _ => return Err(WasmError::UnknownFormat),
+    };
+
+    if !adapter.recognize(cover) {
+        return Err(WasmError::FormatMismatch);
+    }
+
+    let density = Density::Low;
+    let is_encrypted = password.is_some();
+    let use_permuted = is_encrypted && permuted_id.is_some();
+    let (scheme_id, scheme_fcc) = if use_permuted {
+        (permuted_id.unwrap(), permuted_fcc.unwrap())
+    } else {
+        (linear_id, linear_fcc)
+    };
+
+    if is_encrypted {
+        // Matches `rsteg-cli::run_embed`: ciphertext is 42-byte inner header
+        // + plaintext + 16-byte Poly1305 tag = plaintext + 58.
+        const AEAD_OVERHEAD: u32 = 58;
+
+        let mut header = PayloadHeader::plain(scheme_fcc, density, &[]);
+        header.flags |= PayloadHeader::FLAG_ENCRYPTED;
+        if use_permuted {
+            header.flags |= PayloadHeader::FLAG_PERMUTED;
+        }
+        header.crypto_fourcc = rsteg_crypto_aead::FOURCC;
+        let payload_u32 = u32::try_from(payload.len()).map_err(|_| WasmError::InputTooLarge)?;
+        header.body_len = payload_u32
+            .checked_add(AEAD_OVERHEAD)
+            .ok_or(WasmError::InputTooLarge)?;
+        header.body_crc32 = 0;
+
+        let aad = header.encode();
+        let pw = password.unwrap_or(&[]);
+        let scheme = rsteg_crypto_aead::XChaCha20Argon2id::new();
+        let ct = scheme.seal(payload, pw, &aad).map_err(|e| translate_err(&e))?;
+
+        let mut framed = Vec::with_capacity(PayloadHeader::SIZE + ct.len());
+        framed.extend_from_slice(&aad);
+        framed.extend_from_slice(&ct);
+
+        let seed = if use_permuted { Some(fold_u64(pw)) } else { None };
+        let opts = EmbedOpts {
+            scheme: Some(scheme_id),
+            density,
+            seed,
+        };
+        adapter
+            .embed(cover, &framed, &opts)
+            .map_err(|e| translate_err(&e))
+    } else {
+        let header = PayloadHeader::plain(scheme_fcc, density, payload);
+        let framed = header.encode_with(payload);
+        let opts = EmbedOpts {
+            scheme: Some(scheme_id),
+            density,
+            seed: None,
+        };
+        adapter
+            .embed(cover, &framed, &opts)
+            .map_err(|e| translate_err(&e))
+    }
+}
+
+/// Embed path is only available with the `crypto` feature (the header
+/// framing crate is brought in by rsteg-core, but encryption depends on
+/// rsteg-crypto-aead). Callers that try to embed without `crypto` enabled
+/// and without a password could in principle go through a plaintext path,
+/// but the ABI surface keeps embed symmetric with extract: both require
+/// the full default feature set.
+#[cfg(not(feature = "crypto"))]
+pub fn embed_payload(
+    _cover: &[u8],
+    _payload: &[u8],
+    _password: Option<&[u8]>,
+    _format_fourcc: u32,
+) -> Result<Vec<u8>, WasmError> {
+    Err(WasmError::CryptoDisabled)
+}
+
 // ---------------------------------------------------------------------------
 // FFI shim. Authorized unsafe per spec 02 rule 5. Thin — every entrypoint
 // validates its arguments, forwards to the safe-Rust core above, and packs
@@ -194,7 +340,7 @@ fn fold_u64(bytes: &[u8]) -> u64 {
 
 #[allow(unsafe_code)]
 mod ffi {
-    use super::{extract_payload, WasmError, MAX_INPUT_BYTES, OK};
+    use super::{embed_payload, extract_payload, WasmError, MAX_INPUT_BYTES, OK};
     use std::alloc::{alloc, dealloc, Layout};
 
     /// Allocate `len` bytes in linear memory. Returns a pointer the caller
@@ -298,6 +444,72 @@ mod ffi {
         }
     }
 
+    /// Embed `payload` into `cover` and return a Rust-owned buffer of
+    /// stego-carrier bytes via the same `(out_ptr, out_len)` out-parameter
+    /// shape as [`rsteg_extract`].
+    ///
+    /// When `password_ptr` / `password_len` describe a non-empty slice,
+    /// the body is AEAD-sealed using XChaCha20-Poly1305 + Argon2id and the
+    /// permuted LSB scheme is used for BMP / WAV (PNG stays linear; the
+    /// AEAD alone provides confidentiality). When the password is absent
+    /// (`(null, 0)`) the body is embedded plaintext at the linear scheme.
+    ///
+    /// On wasm32 the seal path draws entropy via the custom `getrandom`
+    /// backend (`rsteg_fill_random` JS import). A JS glue that does not
+    /// wire up that import will produce `WasmError::RngUnavailable`.
+    ///
+    /// # Safety
+    ///
+    /// Same contract as `rsteg_extract`: all non-null pointers must point
+    /// to the declared number of readable (or writable, for out-params)
+    /// bytes and remain live for the duration of the call. Output buffer
+    /// ownership transfers to the caller on success.
+    #[no_mangle]
+    pub unsafe extern "C" fn rsteg_embed(
+        cover_ptr: *const u8,
+        cover_len: usize,
+        payload_ptr: *const u8,
+        payload_len: usize,
+        password_ptr: *const u8,
+        password_len: usize,
+        format_fourcc: u32,
+        out_ptr: *mut *mut u8,
+        out_len: *mut usize,
+    ) -> u32 {
+        if out_ptr.is_null() || out_len.is_null() {
+            return WasmError::NullPointer as u32;
+        }
+        let cover = match as_slice(cover_ptr, cover_len) {
+            Ok(s) => s,
+            Err(code) => return code as u32,
+        };
+        let payload = match as_slice(payload_ptr, payload_len) {
+            Ok(s) => s,
+            Err(code) => return code as u32,
+        };
+        let password = if password_ptr.is_null() && password_len == 0 {
+            None
+        } else {
+            match as_slice(password_ptr, password_len) {
+                Ok(s) => Some(s),
+                Err(code) => return code as u32,
+            }
+        };
+
+        match embed_payload(cover, payload, password, format_fourcc) {
+            Ok(v) => {
+                let (ptr, len) = into_raw_parts(v);
+                // SAFETY: both out-params checked non-null above.
+                unsafe {
+                    *out_ptr = ptr;
+                    *out_len = len;
+                }
+                OK
+            }
+            Err(e) => e as u32,
+        }
+    }
+
     /// Convert `(ptr, len)` into a safe slice, validating nullness and size
     /// caps. An empty-but-non-null buffer is permitted (JS side may pass
     /// `rsteg_alloc(0)` → null; this path handles both shapes consistently).
@@ -334,6 +546,6 @@ mod ffi {
 
 // Re-export the FFI symbols so integration tests can call them as regular
 // functions without depending on a linker for `#[no_mangle]`.
-pub use ffi::{rsteg_alloc, rsteg_extract, rsteg_free};
+pub use ffi::{rsteg_alloc, rsteg_embed, rsteg_extract, rsteg_free};
 
 

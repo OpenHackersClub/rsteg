@@ -307,6 +307,7 @@ dependencies = [
 name = "rsteg-wasm"
 version = "0.1.0"
 dependencies = [
+ "getrandom",
  "rsteg-bmp",
  "rsteg-core",
  "rsteg-crypto-aead",
