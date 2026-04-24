@@ -5,10 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "WAV (RIFF/PCM) format adapter for rsteg."
+homepage.workspace = true
+description = "WAV (RIFF/PCM) format adapter for rsteg — LSB embedding in PCM audio."
+readme = "../../README.md"
+keywords = ["steganography", "stego", "lsb", "wav", "audio"]
+categories = ["encoding", "multimedia::audio"]
 
 [lints]
 workspace = true
 
 [dependencies]
-rsteg-core = { path = "../rsteg-core" }
+rsteg-core = { path = "../rsteg-core", version = "=0.1.0" }

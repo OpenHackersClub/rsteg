@@ -5,7 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command-line tool for rsteg."
+homepage.workspace = true
+description = "Command-line tool for rsteg — embed and extract hidden payloads in BMP, PNG, WAV."
+readme = "../../README.md"
+keywords = ["steganography", "stego", "lsb", "cli", "hiding"]
+categories = ["command-line-utilities", "cryptography", "encoding"]
 
 [[bin]]
 name = "rsteg"
@@ -15,11 +19,11 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-rsteg-core        = { path = "../rsteg-core" }
-rsteg-bmp         = { path = "../rsteg-bmp" }
-rsteg-wav         = { path = "../rsteg-wav" }
-rsteg-png         = { path = "../rsteg-png" }
-rsteg-crypto-aead = { path = "../rsteg-crypto-aead" }
+rsteg-core        = { path = "../rsteg-core", version = "=0.1.0" }
+rsteg-bmp         = { path = "../rsteg-bmp", version = "=0.1.0" }
+rsteg-wav         = { path = "../rsteg-wav", version = "=0.1.0" }
+rsteg-png         = { path = "../rsteg-png", version = "=0.1.0" }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead", version = "=0.1.0" }
 lexopt            = "0.3"
 
 [dev-dependencies]
