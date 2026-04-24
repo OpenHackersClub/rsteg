@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — LSB linear</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --danger: #ff7b72;
+      --code: #f85149;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 880px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 34px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 36px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+    .panel.accent { border-color: #264d2a; }
+    .kbd {
+      font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+      padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    button {
+      background: var(--accent); color: #0d1117; border: 0; border-radius: 4px;
+      padding: 7px 14px; font-weight: 600; font-size: 13px; cursor: pointer;
+      font-family: inherit;
+    }
+    button.secondary {
+      background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+    }
+    button:hover { filter: brightness(1.1); }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+    .topnav .links { display: flex; gap: 14px; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
+    .topnav .title b { color: var(--fg); }
+
+    .vis-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 14px 0; }
+    .vis-wrap svg { width: 100%; height: auto; display: block; }
+    .vis-caption { font-size: 12px; color: var(--muted); margin-top: 8px; font-family: var(--mono); }
+
+    .controls { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .controls label { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+    .legend-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; font-family: var(--mono); color: var(--muted); margin: 6px 0 0; }
+    .legend-row .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: middle; margin-right: 4px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="links">
+    <a href="/">home</a>
+    <a href="/algo">algos</a>
+    <a href="/benchmarks">benchmarks</a>
+  </div>
+  <div class="title"><b>LSB linear</b> <span class="muted">— scheme ?LSL</span></div>
+</nav>
+
+<h1>LSB linear</h1>
+<p class="muted">
+  The baseline steganography scheme. Walk the cover's sample bytes in storage
+  order, overwrite the <em>density</em> least-significant bits of each byte with
+  the next bits of the payload. The cover's top bits — which carry almost all
+  the visual / audible signal — are untouched.
+</p>
+
+<h2>What "LSB" means</h2>
+<p>
+  A byte has eight bits: <code>b7 b6 b5 b4 b3 b2 b1 b0</code>. <code>b7</code> is
+  the most-significant bit (worth 128), <code>b0</code> is the least-significant
+  (worth 1). For an 8-bit sample — one channel of an RGB pixel, one mono audio
+  sample, an index into a palette — flipping <code>b0</code> changes the sample
+  by ±1. That's a 1/256 change on any given byte.
+</p>
+<p>
+  The human visual system can't tell <code>#A3A3A3</code> from <code>#A2A3A3</code>
+  at a normal viewing distance. The ear can't tell a 16-bit PCM sample with
+  value <code>23414</code> from <code>23415</code>. Density ≥ 2 widens the budget
+  — four times the capacity at density 4 — but also widens the worst-case
+  perceptual delta to ±7 for an 8-bit sample, which starts to show as banding
+  on smooth gradients.
+</p>
+
+<h2>What "linear" means</h2>
+<p>
+  We visit carrier bytes in the exact order they appear in the file. For
+  <code>rsteg-bmp</code> that's "skip the 54-byte file header, then walk every
+  byte of the pixel array left-to-right, top-to-bottom" — see
+  <code>crates/rsteg-bmp/src/lib.rs</code>. We don't skip padding bytes
+  inside a row, because 24-bit BMP rows are 4-byte-aligned and the BMP
+  header's <code>biSizeImage</code> field tells the extractor exactly how many
+  pixel bytes there are.
+</p>
+<p>
+  The <code>n</code>-th payload bit lands in the <code>density</code> low bits
+  of sample byte <code>⌊n / density⌋</code>. Extract does the reverse: read the
+  LSBs from samples <code>0..ceil(framed_bits / density)</code> back into a
+  bitstream, parse the 32-byte <code>PayloadHeader</code>, keep reading
+  <code>body_len</code> more bytes.
+</p>
+
+<h2>Visualization 1 — payload bits land in sample LSBs</h2>
+
+<p class="muted" style="font-size:13px">
+  Sixteen cover bytes, each shown as eight bits. The LSB column is highlighted.
+  Below, a two-byte payload <code>0x48 0x69</code> (= <code>"Hi"</code>) as a
+  16-bit stream. Arrows show which payload bit lands in which LSB. Green
+  markers flag bytes whose LSB flipped; gray = unchanged (the cover's original
+  LSB already matched the payload bit).
+</p>
+
+<div class="vis-wrap">
+  <svg viewBox="0 0 860 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LSB linear bit-to-byte mapping">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79c0ff" />
+      </marker>
+    </defs>
+
+    <!-- Title row -->
+    <text x="10" y="18" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">cover bytes (before embed) — 16 samples, binary MSB→LSB</text>
+
+    <!-- 16 cover bytes drawn as 16 columns of 8 small cells, stacked: one byte = one vertical stack of 8 cells? No — row-oriented is easier. We'll do each BYTE as a row of 8 cells. -->
+    <!-- 16 rows × 8 cells. Cells: 20 px wide, 20 px tall. Total: 8*20=160px wide. Too narrow. Instead we'll arrange bytes horizontally, bits vertically inside each byte column? Keep it simple: each BYTE is one HORIZONTAL strip of 8 cells, stacked on 2 columns -->
+
+    <!-- We'll lay bytes 0..7 as column 1, bytes 8..15 as column 2 -->
+    <!-- Each byte row: 8 cells × 26px wide = 208px. Column width 260px with byte label. -->
+
+    <!-- Cover bytes, binary representation (example). We want some to already have LSB matching payload bit (unchanged) and some to flip. Payload "Hi" = 0x48 0x69 = 01001000 01101001. So payload bits in order: 0,1,0,0,1,0,0,0, 0,1,1,0,1,0,0,1 -->
+    <!-- We'll pick cover bytes whose LSB is:
+         byte  original_lsb  payload_bit  flip?
+         0     1             0            yes
+         1     1             1            no
+         2     0             0            no
+         3     1             0            yes
+         4     0             1            yes
+         5     0             0            no
+         6     1             0            yes
+         7     0             0            no
+         8     1             0            yes
+         9     0             1            yes
+         10    0             1            yes
+         11    1             0            yes
+         12    1             1            no
+         13    1             0            yes
+         14    0             0            no
+         15    0             1            yes
+    -->
+    <!-- Display cover bytes using plausible upper-bit values (any) + specific LSB. We'll hardcode 16 bytes. -->
+
+    <!-- Byte drawing group: start y = 30 -->
+
+    <!-- Byte labels and cells: functionized in mind, inlined here -->
+
+    <!-- Column 1, bytes 0..7 -->
+    <!-- byte 0: 10100011 (0xA3), flip -->
+    <g transform="translate(0,30)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b0</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 1: 01110101 (0x75), keep -->
+    <g transform="translate(0,52)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b1</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+    <!-- byte 2: 11001110 (0xCE), keep -->
+    <g transform="translate(0,74)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b2</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+    <!-- byte 3: 00011011 (0x1B), flip -->
+    <g transform="translate(0,96)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b3</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 4: 10001000 (0x88), flip -->
+    <g transform="translate(0,118)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b4</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→1</text>
+      </g>
+    </g>
+    <!-- byte 5: 01000010 (0x42), keep -->
+    <g transform="translate(0,140)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b5</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+    <!-- byte 6: 11110001 (0xF1), flip -->
+    <g transform="translate(0,162)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b6</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 7: 00100110 (0x26), keep -->
+    <g transform="translate(0,184)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b7</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+
+    <!-- Column 2, bytes 8..15 -->
+    <!-- byte 8: 10101011 (0xAB), flip -->
+    <g transform="translate(290,30)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b8</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 9: 11010010 (0xD2), flip -->
+    <g transform="translate(290,52)">
+      <text x="10" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b9</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→1</text>
+      </g>
+    </g>
+    <!-- byte 10: 00110110 (0x36), flip -->
+    <g transform="translate(290,74)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b10</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→1</text>
+      </g>
+    </g>
+    <!-- byte 11: 01110101 (0x75), flip -->
+    <g transform="translate(290,96)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b11</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 12: 10010111 (0x97), keep (payload bit = 1, lsb = 1) -->
+    <g transform="translate(290,118)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b12</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+    <!-- byte 13: 11011011 (0xDB), flip -->
+    <g transform="translate(290,140)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b13</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">1</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→0</text>
+      </g>
+    </g>
+    <!-- byte 14: 01001100 (0x4C), keep -->
+    <g transform="translate(290,162)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b14</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#8b949e" font-size="10">keep</text>
+      </g>
+    </g>
+    <!-- byte 15: 10110100 (0xB4), flip -->
+    <g transform="translate(290,184)">
+      <text x="8" y="14" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">b15</text>
+      <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+        <rect x="40"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="50"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="60"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="70"  y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="80"  y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="90"  y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="100" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="110" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="120" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="130" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="140" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="150" y="15" text-anchor="middle" fill="#e6edf3">1</text>
+        <rect x="160" y="2" width="20" height="18" fill="#1b2230" stroke="#30363d"/><text x="170" y="15" text-anchor="middle" fill="#e6edf3">0</text>
+        <rect x="180" y="2" width="20" height="18" fill="#1f3a1f" stroke="#7ee787"/><text x="190" y="15" text-anchor="middle" fill="#7ee787">0</text>
+        <text x="208" y="15" fill="#ff7b72" font-size="10">flip→1</text>
+      </g>
+    </g>
+
+    <!-- Separator and payload -->
+    <line x1="10" y1="220" x2="850" y2="220" stroke="#30363d" stroke-dasharray="4 4"/>
+    <text x="10" y="238" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">payload bits (MSB→LSB): 0x48 = 01001000, 0x69 = 01101001  →  "Hi"</text>
+
+    <!-- 16 payload bit cells in a horizontal row -->
+    <g font-family="ui-monospace, Menlo, monospace" font-size="11">
+      <!-- byte 0x48 -->
+      <rect x="40"  y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="51"  y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="62"  y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="73"  y="266" text-anchor="middle" fill="#79c0ff">1</text>
+      <rect x="84"  y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="95"  y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="106" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="117" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="128" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="139" y="266" text-anchor="middle" fill="#79c0ff">1</text>
+      <rect x="150" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="161" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="172" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="183" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="194" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="205" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <!-- byte 0x69 -->
+      <rect x="226" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="237" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="248" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="259" y="266" text-anchor="middle" fill="#79c0ff">1</text>
+      <rect x="270" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="281" y="266" text-anchor="middle" fill="#79c0ff">1</text>
+      <rect x="292" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="303" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="314" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="325" y="266" text-anchor="middle" fill="#79c0ff">1</text>
+      <rect x="336" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="347" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="358" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="369" y="266" text-anchor="middle" fill="#79c0ff">0</text>
+      <rect x="380" y="250" width="22" height="22" fill="#0a1f33" stroke="#79c0ff"/><text x="391" y="266" text-anchor="middle" fill="#79c0ff">1</text>
+    </g>
+
+    <text x="410" y="266" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="10">each cell → the LSB of one cover byte, in order</text>
+
+    <!-- Indexing labels -->
+    <g font-family="ui-monospace, Menlo, monospace" font-size="9" fill="#8b949e">
+      <text x="51"  y="285" text-anchor="middle">→b0</text>
+      <text x="73"  y="285" text-anchor="middle">→b1</text>
+      <text x="95"  y="285" text-anchor="middle">→b2</text>
+      <text x="117" y="285" text-anchor="middle">→b3</text>
+      <text x="139" y="285" text-anchor="middle">→b4</text>
+      <text x="161" y="285" text-anchor="middle">→b5</text>
+      <text x="183" y="285" text-anchor="middle">→b6</text>
+      <text x="205" y="285" text-anchor="middle">→b7</text>
+      <text x="237" y="285" text-anchor="middle">→b8</text>
+      <text x="259" y="285" text-anchor="middle">→b9</text>
+      <text x="281" y="285" text-anchor="middle">→b10</text>
+      <text x="303" y="285" text-anchor="middle">→b11</text>
+      <text x="325" y="285" text-anchor="middle">→b12</text>
+      <text x="347" y="285" text-anchor="middle">→b13</text>
+      <text x="369" y="285" text-anchor="middle">→b14</text>
+      <text x="391" y="285" text-anchor="middle">→b15</text>
+    </g>
+
+    <!-- Summary -->
+    <text x="10" y="330" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">
+      <tspan fill="#8b949e">11 of 16 bytes flipped</tspan> — for a random cover, expected flips ≈ 8/16 (half the LSBs already happen to match).
+    </text>
+    <text x="10" y="352" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">density = 1 here. At density 4 each payload byte fits into 2 cover bytes (8 bits / 4 bits-per-sample).</text>
+
+    <text x="10" y="390" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">cover bytes after embed carry a bitstream that decodes back to 0x48 0x69 = "Hi". Upper 7 bits unchanged.</text>
+  </svg>
+  <div class="legend-row">
+    <span><span class="sw" style="background:#1f3a1f; border-color:#7ee787"></span> LSB — writable channel</span>
+    <span><span class="sw" style="background:#0a1f33; border-color:#79c0ff"></span> payload bit</span>
+    <span><span class="sw" style="background:transparent; color:#ff7b72">flip</span> — LSB changed</span>
+    <span><span class="sw" style="background:transparent; color:#8b949e">keep</span> — LSB already matched</span>
+  </div>
+</div>
+
+<h2>Visualization 2 — capacity scales linearly with density</h2>
+
+<p class="muted" style="font-size:13px">
+  For <em>N</em> sample bytes and density <em>D</em>, the carrier holds
+  <code>floor(N·D / 8)</code> payload bytes. On a 256×256 24-bit BMP that's
+  <code>N = 256·256·3 = 196 608</code> sample bytes. Subtract the 32-byte
+  <code>PayloadHeader</code> and the maximum body is:
+</p>
+
+<div class="vis-wrap">
+  <svg viewBox="0 0 820 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Capacity per density">
+    <!-- Axis -->
+    <line x1="120" y1="30" x2="120" y2="240" stroke="#30363d"/>
+    <text x="10" y="20" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">density</text>
+    <text x="140" y="20" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">body capacity (bytes)</text>
+
+    <!-- D=1 -->
+    <text x="112" y="62" text-anchor="end" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">1</text>
+    <rect x="120" y="45" width="140" height="24" fill="#7ee787" opacity="0.7"/>
+    <text x="265" y="62" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">24 544 body + 32 header = 24 576</text>
+
+    <!-- D=2 -->
+    <text x="112" y="107" text-anchor="end" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">2</text>
+    <rect x="120" y="90" width="280" height="24" fill="#79c0ff" opacity="0.7"/>
+    <text x="405" y="107" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">49 120 body</text>
+
+    <!-- D=3 -->
+    <text x="112" y="152" text-anchor="end" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">3</text>
+    <rect x="120" y="135" width="420" height="24" fill="#ffa657" opacity="0.7"/>
+    <text x="545" y="152" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">73 696 body</text>
+
+    <!-- D=4 -->
+    <text x="112" y="197" text-anchor="end" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">4</text>
+    <rect x="120" y="180" width="560" height="24" fill="#ff7b72" opacity="0.7"/>
+    <text x="685" y="197" fill="#e6edf3" font-family="ui-monospace, Menlo, monospace" font-size="12">98 272 body</text>
+
+    <text x="120" y="230" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">N = 196 608 sample bytes (256×256 RGB). capacity = floor(N·D / 8) − 32 bytes header.</text>
+    <text x="120" y="246" fill="#8b949e" font-family="ui-monospace, Menlo, monospace" font-size="11">trade-off: density 4 is 4× capacity and ~4× the perceptual delta. density 1 is the recommended default.</text>
+  </svg>
+</div>
+
+<h2>The Rust that does this</h2>
+<p>
+  The whole walk lives in <code>rsteg-bmp/src/lib.rs</code>. Simplified:
+</p>
+<pre>
+// Embed: for each byte of `framed`, split into `density` bits, OR each bit into the
+// LSBs of the next cover sample. Upper bits are preserved via a mask.
+let mask: u8 = !((1 &lt;&lt; density) - 1);   // density=1 → 0xFE, density=4 → 0xF0
+for (sample, payload_bits) in cover_samples.iter_mut().zip(bit_reader) {
+    *sample = (*sample & mask) | payload_bits;
+}
+
+// Extract: inverse. Read `density` low bits from each sample, append to a BitWriter.
+for sample in stego_samples.iter().take(needed) {
+    bw.write_bits(*sample & !mask, density);
+}
+</pre>
+<p class="muted" style="font-size:13px">
+  <code>bit_reader</code> is <code>rsteg-core::bits::BitReader</code>, which unpacks a
+  byte-stream into an iterator of <em>D</em>-bit chunks in MSB-first order.
+  The <strong>framed</strong> bitstream is always <code>header (32 B) || body</code>.
+  Extract reads 32·8/<em>D</em> samples, decodes the header, then reads
+  <code>body_len</code> more bytes.
+</p>
+
+<h2>When this is and isn't a good idea</h2>
+<p>
+  Linear LSB is the right default when there's no adversary: shipping configuration
+  to yourself through an image that roundtrips a lossy pipeline, a demo that just
+  needs to prove the mechanism works, a smoke test for the file-format adapter.
+  It is <em>not</em> a good default when someone might run a steganalyser over your
+  carrier.
+</p>
+<p>
+  The weakness isn't the bit-flipping — the LSB of a natural image is close to
+  uniform noise so the flips are statistically invisible <em>in aggregate</em>. The
+  weakness is that payload bits occupy a <strong>contiguous prefix</strong> of the
+  carrier. Run chi-square on the first 1 000 samples vs. the last 1 000 and the
+  prefix looks like forced uniformity while the suffix looks like natural image
+  noise. Any undergraduate steganalysis tool flags this.
+</p>
+<p>
+  That's exactly why <a href="/algo/lsb-permuted">LSB permuted</a> exists — same
+  bit-flipping mechanic, passphrase-seeded walk order, so no contiguous block
+  has a signal. That page has an interactive visualization of the walk.
+</p>
+
+</body>
+</html>
