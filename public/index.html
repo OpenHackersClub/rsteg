@@ -122,6 +122,62 @@
     .summary .count.phase2  { color: var(--accent-2); }
     .summary .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; }
 
+    .stego-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0 8px;
+    }
+    @media (max-width: 640px) { .stego-row { grid-template-columns: 1fr; } }
+    .stego-row figure { margin: 0; }
+    .stego-row img {
+      width: 100%; height: auto; display: block;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: #0a0d12;
+    }
+    .stego-row figcaption {
+      font-family: var(--mono); font-size: 12px;
+      padding: 8px 2px 0; display: flex; gap: 10px; align-items: baseline;
+      flex-wrap: wrap; color: var(--muted);
+    }
+    .stego-row figcaption .label {
+      color: var(--accent); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    details.reveal {
+      margin: 10px 0 0; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px;
+    }
+    details.reveal > summary {
+      cursor: pointer; font-family: var(--mono); font-size: 13px;
+      color: var(--accent-2); list-style: none;
+    }
+    details.reveal > summary::before { content: "▸ "; color: var(--muted); }
+    details.reveal[open] > summary::before { content: "▾ "; }
+    details.reveal[open] > summary { margin-bottom: 10px; }
+    img.payload-reveal {
+      max-width: 420px; width: 100%; height: auto;
+      border: 1px solid var(--border); border-radius: 4px;
+    }
+    pre.demo-cmd {
+      background: var(--panel); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+    }
+
+    .bench-wrap { margin: 12px 0 4px; overflow-x: auto; }
+    .bench-wrap table {
+      border-collapse: collapse; width: 100%; font-size: 13px;
+    }
+    .bench-wrap th, .bench-wrap td {
+      text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .bench-wrap th {
+      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .bench-wrap td { font-family: var(--mono); }
+    .bench-wrap td:first-child { font-family: inherit; }
+    .bench-wrap strong { color: var(--accent); }
+    .bench-wrap sup { color: var(--muted); }
+
     .topnav {
       display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
       font-family: var(--mono); font-size: 13px;
@@ -131,7 +187,6 @@
     .topnav .links { display: flex; gap: 14px; flex-wrap: wrap; }
     .topnav .links a { color: var(--muted); }
     .topnav .links a.current { color: var(--accent); }
-    .topnav .links .sep { color: var(--border); }
     .topnav .title { color: var(--muted); margin-left: auto; }
   </style>
 </head>
@@ -140,37 +195,86 @@
 <nav class="topnav">
   <div class="links">
     <a href="/" class="current">home</a>
-    <span class="sep">·</span>
     <a href="/algo">algos</a>
-    <a href="/algo/lsb-linear">lsb-linear</a>
-    <a href="/algo/lsb-permuted">lsb-permuted</a>
-    <a href="/algo/payload-header">header</a>
-    <a href="/algo/aead">aead</a>
+    <a href="/#bench">benchmarks</a>
   </div>
 </nav>
 
 <h1>rsteg</h1>
-<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#tracker">feature tracker</a>, <a href="#demo">run the demo locally</a>, or read the <a href="/algo">algorithm explainers</a>.</p>
+<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#stego-demo">live stego demo</a>, <a href="#bench">benchmarks</a>, <a href="#tracker">feature tracker</a>, or read the <a href="/algo">algorithm explainers</a>.</p>
 
+<!-- site:begin intro -->
 <h2>What is steganography?</h2>
-<p>
-  Cryptography hides <em>what</em> a message says. Steganography hides <em>that there is a message at all</em>.
-  rsteg takes a carrier file (image, audio) and tweaks its least-significant bits so they spell out a hidden payload.
-  A copy of the carrier that doesn't use rsteg is indistinguishable from a copy that does — unless you know the scheme.
-</p>
+<p>Cryptography hides <em>what</em> a message says. Steganography hides <em>that there is
+a message at all</em>. rsteg takes a carrier file (image or audio) and tweaks
+its least-significant bits so they spell out a hidden payload. A copy of the
+carrier that doesn't use rsteg is indistinguishable from a copy that does —
+unless you know the scheme.</p>
+<!-- site:end intro -->
 
-<h3>How LSB embedding works</h3>
-<p>For each byte of the cover, we overwrite the <span class="kbd">density</span> low bits with one bit of payload:</p>
-<div class="bit-vis">
-  <div>b7</div><div>b6</div><div>b5</div><div>b4</div><div>b3</div><div>b2</div><div>b1</div><div class="lsb">LSB</div>
+<!-- site:begin lsb-basics -->
+<h2>How LSB embedding works</h2>
+<p>For each byte of the cover, we overwrite the <em>density</em> low bits with one
+bit of payload. At density 1, the top 7 bits of a pixel are untouched — a
+pixel value of <code>0xA3 = 10100011</code> becomes <code>0xA2 = 10100010</code> to carry a <code>0</code>
+bit. That's a 1/256 change, invisible to the eye. At density 4 you get
+four times the capacity and the change is ±7 (still perceptually tiny but
+statistically detectable).</p>
+<!-- site:end lsb-basics -->
+
+<h2 id="stego-demo">See it in action — Munch hidden in Munch</h2>
+<p>The left is an ordinary PNG of Munch's <em>Starry Night</em>. The right is the same painting with <strong>328 KB of arbitrary binary data</strong> — the full JPG of Munch's <em>The Scream</em> — woven into its least significant bits at density 1, sealed with XChaCha20-Poly1305. To the eye and to <code>diff</code>-style byte comparison of visible pixels, they are indistinguishable. Only the bottom bit of every colour channel has been rewritten.</p>
+
+<div class="stego-row">
+  <figure>
+    <img src="/sample/munch_starry.png" alt="Starry Night — original PNG cover, 2.0 MB" loading="lazy">
+    <figcaption><span class="label">cover</span> <span>munch_starry.png · 2.0 MB</span></figcaption>
+  </figure>
+  <figure>
+    <img src="/sample/munch_starry_stego.png" alt="Starry Night — PNG with Scream embedded via rsteg, 2.2 MB" loading="lazy">
+    <figcaption><span class="label">stego</span> <span>munch_starry_stego.png · 2.2 MB</span> <a href="/sample/munch_starry_stego.png" download>download</a></figcaption>
+  </figure>
 </div>
-<p class="muted" style="font-size:13px">
-  At density 1, the top 7 bits of the pixel are untouched. A pixel value of
-  <code>0xA3 = 10100011</code> becomes <code>0xA2 = 10100010</code> to carry a
-  <code>0</code> bit — a 1/256 change, invisible to the eye. At density 4 you
-  get four times the capacity and the change is ±7 (still perceptually tiny but
-  statistically detectable).
-</p>
+
+<details class="reveal">
+  <summary>Reveal the payload that was extracted</summary>
+  <p class="muted">Running <code>rsteg extract --in munch_starry_stego.png --password - --out scream.jpg</code> returns a JPG byte-for-byte identical to the one that was embedded (SHA-1 <code>10570e48…</code>):</p>
+  <img src="/sample/munch_scream.jpg" alt="Munch's The Scream — extracted from the stego PNG" loading="lazy" class="payload-reveal">
+</details>
+
+<pre class="demo-cmd"><code>$ rsteg embed \
+    --in  munch_starry.png \
+    --payload munch_scream.jpg \
+    --out munch_starry_stego.png \
+    --password -
+embedded 328443B into 2058477B carrier → 2166395B stego (328533 bytes framed)</code></pre>
+
+<h2 id="bench">Benchmarks — rsteg vs steghide vs stegano-rs</h2>
+<p class="muted">Median of 11 iterations after 3 warmups, on macOS aarch64. Full methodology and caveats in <a href="https://github.com/OpenHackersClub/rsteg/blob/main/bench/README.md" target="_blank" rel="noreferrer">bench/README.md</a>.</p>
+<div class="bench-wrap">
+<!-- site:begin bench-headline -->
+<table><thead><tr><th>Op / carrier / payload</th><th style="text-align: right">rsteg</th><th style="text-align: right">steghide</th><th style="text-align: right">stegano</th><th style="text-align: right">speedup (vs next best)</th></tr></thead><tbody>
+<tr><td>BMP 128×128 embed 1 KB</td><td style="text-align: right">1.6 ms</td><td style="text-align: right">20.6 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>13×</strong></td></tr>
+<tr><td>BMP 128×128 extract 1 KB</td><td style="text-align: right">1.5 ms</td><td style="text-align: right">6.5 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>4.4×</strong></td></tr>
+<tr><td>BMP 512×512 embed 1 KB</td><td style="text-align: right">3.8 ms</td><td style="text-align: right">41.2 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>11×</strong></td></tr>
+<tr><td>BMP 512×512 embed 10 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">440.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>125×</strong></td></tr>
+<tr><td>BMP 512×512 extract 10 KB</td><td style="text-align: right">2.7 ms</td><td style="text-align: right">28.1 ms</td><td style="text-align: right">—</td><td style="text-align: right"><strong>10×</strong></td></tr>
+<tr><td>WAV 5 s stereo embed 1 KB</td><td style="text-align: right">2.4 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">69 ms</td><td style="text-align: right"><strong>29×</strong> (vs stegano)</td></tr>
+<tr><td>WAV 5 s stereo embed 20 KB</td><td style="text-align: right">3.5 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">71 ms</td><td style="text-align: right"><strong>20×</strong> (vs stegano)</td></tr>
+<tr><td>WAV 5 s stereo extract 20 KB</td><td style="text-align: right">2.9 ms</td><td style="text-align: right">crash¹</td><td style="text-align: right">68 ms</td><td style="text-align: right"><strong>23×</strong> (vs stegano)</td></tr>
+<tr><td>PNG 256×256 embed 1 KB</td><td style="text-align: right">6.1 ms</td><td style="text-align: right">—</td><td style="text-align: right">67 ms</td><td style="text-align: right"><strong>11×</strong></td></tr>
+<tr><td>PNG 256×256 extract 10 KB</td><td style="text-align: right">2.6 ms</td><td style="text-align: right">—</td><td style="text-align: right">66 ms</td><td style="text-align: right"><strong>25×</strong></td></tr>
+</tbody></table>
+<p>¹ Native arm64 <code>steghide 0.6.0</code> reliably SIGSEGVs when embedding payloads
+≥ 1 KB into the synthetic <code>wav-short</code> cover. Raising <code>ulimit -s</code> to 64 MB
+did not help, so this is not a stack-size issue. Payloads ≤ 512 B embed
+successfully. rsteg is the only tool with complete <code>wav-short</code> coverage
+on this platform.</p>
+<p><strong>rsteg is faster than both reference tools on every case it shares with them.</strong>
+The gap versus <code>steghide</code> is 4–125× depending on carrier size and
+payload; against <code>stegano-cli</code> on PNG/WAV it's 10–25×.</p>
+<!-- site:end bench-headline -->
+</div>
 
 <h2 id="tracker">Feature tracker &amp; comparison</h2>
 

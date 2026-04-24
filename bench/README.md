@@ -30,6 +30,7 @@ the [`Native steghide build`](#native-steghide-build) section.
 
 ## Headline results
 
+<!-- site:begin bench-headline -->
 | Op / carrier / payload        | rsteg    | steghide  | stegano | speedup (vs next best) |
 |-------------------------------|---------:|----------:|--------:|-----------------------:|
 | BMP 128×128 embed 1 KB        |   1.6 ms |   20.6 ms |    —    | **13×**                |
@@ -52,6 +53,7 @@ on this platform.
 **rsteg is faster than both reference tools on every case it shares with them.**
 The gap versus `steghide` is 4–125× depending on carrier size and
 payload; against `stegano-cli` on PNG/WAV it's 10–25×.
+<!-- site:end bench-headline -->
 
 ## Caveats (read these)
 

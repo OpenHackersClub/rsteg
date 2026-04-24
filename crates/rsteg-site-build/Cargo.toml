@@ -1,0 +1,19 @@
+[package]
+name = "rsteg-site-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Dev-only: render marked markdown sections from README files into public/index.html."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rsteg-site-build"
+path = "src/main.rs"
+
+[dependencies]
+pulldown-cmark = { version = "0.10", default-features = false, features = ["html"] }

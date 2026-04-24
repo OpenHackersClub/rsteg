@@ -38,3 +38,16 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: cargo test
         run: cargo test --workspace --locked
+
+      - name: site content in sync with README
+        # Re-render public/index.html from README.md + bench/README.md.
+        # If the committed HTML diverges from what the builder would produce,
+        # fail CI — run `cargo run -p rsteg-site-build` locally and commit
+        # the result.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo run -p rsteg-site-build --locked
+          if ! git diff --exit-code -- public/index.html README.md bench/README.md; then
+            echo "::error::site content is out of sync with README sources. Run \`cargo run -p rsteg-site-build\` locally and commit the result."
+            exit 1
+          fi
