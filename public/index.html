@@ -511,24 +511,21 @@ embedded 328443B into 2058477B carrier → 2166395B stego (328533 bytes framed)<
 
 <div class="panel accent">
   <p style="margin:0 0 8px">
-    The interactive embed / extract / inspect demo runs as a small
-    <a href="https://github.com/tokio-rs/axum" target="_blank" rel="noreferrer">axum</a>
-    server against the real <code>rsteg-bmp</code> crate — so the round-trip you
-    see on localhost is the same code path the library ships. We don't host it
-    on Cloudflare Pages because Pages is static-only and we'd rather you run the
-    canonical Rust implementation than a JS reimplementation that could silently
-    drift.
+    Clone the repo and use the CLI — that's the real supported path and the
+    same code this page calls <em>the canonical Rust implementation</em>:
   </p>
-  <p class="muted" style="font-size:13px; margin:0 0 8px">Clone the repo and run:</p>
 <pre>git clone https://github.com/OpenHackersClub/rsteg
 cd rsteg
-cargo run -p rsteg-web
-# then open http://127.0.0.1:3456</pre>
+cargo run -p rsteg-cli --release -- embed \
+    --in  cover.bmp --payload secret.txt --out stego.bmp \
+    --password -
+cargo run -p rsteg-cli --release -- extract \
+    --in  stego.bmp --out recovered.txt --password -</pre>
   <p class="muted" style="font-size:13px; margin:8px 0 0">
-    You get a preset gallery (gradient / noise / stripes / checkerboard / solid /
-    photo-like), an upload slot for your own 24-bit BMP, density selector (1–4),
-    and a side-by-side cover/stego diff after embed. Extract and Inspect each
-    take an uploaded BMP and return JSON.
+    An in-browser embed / extract widget is coming via <code>rsteg-wasm</code>
+    (see <a href="https://github.com/OpenHackersClub/rsteg/blob/main/specs/10-browser-wasm.md" target="_blank" rel="noreferrer">spec 10</a>) — no server
+    required, all crypto client-side. Until then, the CLI is the canonical
+    path.
   </p>
 </div>
 
@@ -570,8 +567,9 @@ cargo run -p rsteg-web
 
 <p class="muted" style="font-size:12px; margin-top:32px">
   Source: <a href="https://github.com/OpenHackersClub/rsteg" target="_blank" rel="noreferrer">github.com/OpenHackersClub/rsteg</a>.
-  This page is the static deploy of <code>crates/rsteg-web/src/index.html</code>
-  with interactive panels stripped — the live demo ships as a local axum server.
+  This page lives at <code>public/index.html</code> and deploys to Cloudflare Pages.
+  Intro / LSB basics / bench headline sections are spliced in from source READMEs by
+  <code>rsteg-site-build</code>.
 </p>
 
 </body>

@@ -57,7 +57,7 @@ Dev deps do not count against the default-build budget but must still be license
 ### Budget
 
 Measured on `rsteg-cli` (the shipped binary), *not* the full workspace —
-dev-only crates (`rsteg-bench`, `rsteg-web`, `rsteg-site-build`) sit outside
+dev-only crates (`rsteg-bench`, `rsteg-site-build`) sit outside
 this budget because they never reach a user.
 
 | Config                                               | Target | Current |

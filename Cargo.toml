@@ -8,7 +8,6 @@ members = [
     "crates/rsteg-png",
     "crates/rsteg-cli",
     "crates/rsteg-bench",
-    "crates/rsteg-web",
     "crates/rsteg-site-build",
 ]
 

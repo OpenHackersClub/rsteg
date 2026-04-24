@@ -29,22 +29,6 @@ jobs:
           # CI workflow's checkout policy.
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Stage algo explainer pages into public/
-        # The /algo/* pages live under the axum crate as include_str! HTML.
-        # For the static Pages artifact we copy them into public/ with
-        # directory-index paths so URLs match the server routes. The
-        # interactive /api/algo/* POSTs need the Rust backend and will not
-        # work from the static preview — intentional; preview shows the
-        # SVG diagrams and prose.
-        run: |
-          src=crates/rsteg-web/src/pages
-          mkdir -p public/algo/lsb-linear public/algo/lsb-permuted public/algo/payload-header public/algo/aead
-          cp "$src/algo_index.html"     public/algo/index.html
-          cp "$src/lsb_linear.html"     public/algo/lsb-linear/index.html
-          cp "$src/lsb_permuted.html"   public/algo/lsb-permuted/index.html
-          cp "$src/payload_header.html" public/algo/payload-header/index.html
-          cp "$src/aead.html"           public/algo/aead/index.html
-
       - name: Verify static artifact
         run: |
           test -d public || { echo "public/ missing"; exit 1; }
@@ -78,9 +62,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # --branch=<non-production-branch> triggers a Cloudflare Pages
           # preview deployment at <branch>.rsteg.pages.dev. For main it
-          # deploys to production. --commit-dirty silences the warning
-          # about our staged public/algo/** files not being in git.
-          command: pages deploy public --project-name=rsteg --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true
+          # deploys to production.
+          command: pages deploy public --project-name=rsteg --branch=${{ github.head_ref || github.ref_name }}
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
@@ -97,4 +80,4 @@ jobs:
           - Commit: \`$COMMIT_SHA\`
           - Pages: [/](${DEPLOY_URL}) · [/algo](${DEPLOY_URL}/algo) · [/algo/lsb-linear](${DEPLOY_URL}/algo/lsb-linear) · [/algo/lsb-permuted](${DEPLOY_URL}/algo/lsb-permuted) · [/algo/payload-header](${DEPLOY_URL}/algo/payload-header) · [/algo/aead](${DEPLOY_URL}/algo/aead)
 
-          Note: the \`/api/algo/*\` POST endpoints (permutation trace, header encoder) need the Rust backend and are not exercised by the static preview."
+          Note: the interactive widgets on \`/algo/lsb-permuted\` and \`/algo/payload-header\` are disabled on the static preview — they previously called the axum dev server which has been removed. They will return when \`rsteg-wasm\` can back them client-side (spec 10)."
