@@ -53,18 +53,21 @@ jobs:
           find public -type f | sort
 
       - name: Ensure Cloudflare Pages project exists
-        # Idempotent bootstrap: skip if already present, create otherwise.
-        # Keeps the workflow self-sufficient so the first deploy after
-        # enabling Pages previews doesn't require a manual dashboard step.
+        # Idempotent bootstrap: attempt to create; tolerate the specific
+        # "already exists" error. Keeps the workflow self-sufficient so
+        # the first deploy after enabling Pages previews doesn't require
+        # a manual dashboard step, and subsequent deploys don't re-fail.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if npx -y wrangler@3 pages project list 2>/dev/null | awk '{print $1}' | grep -qx rsteg; then
-            echo "Pages project 'rsteg' already exists."
-          else
-            echo "Pages project 'rsteg' not found; creating."
-            npx -y wrangler@3 pages project create rsteg --production-branch=main
+          set +e
+          output=$(npx -y wrangler@3 pages project create rsteg --production-branch=main 2>&1)
+          rc=$?
+          set -e
+          echo "$output"
+          if [ "$rc" -ne 0 ] && ! echo "$output" | grep -q "already exists"; then
+            exit "$rc"
           fi
 
       - name: Deploy to Cloudflare Pages
