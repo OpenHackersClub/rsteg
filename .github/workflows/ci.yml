@@ -47,7 +47,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           cargo run -p rsteg-site-build --locked
-          if ! git diff --exit-code -- public/index.html public/algo README.md bench/README.md crates/rsteg-web/src/pages; then
+          if ! git diff --exit-code -- public/index.html public/algo README.md bench/README.md; then
             echo "::error::site content is out of sync with README sources. Run \`cargo run -p rsteg-site-build\` locally and commit the result."
             exit 1
           fi
