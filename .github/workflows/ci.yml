@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +24,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out the PR branch HEAD directly (not the ephemeral
+          # refs/pull/N/merge commit). This means CI reflects the state
+          # of the branch as pushed, without merging main first — useful
+          # when main has advanced and the PR hasn't been rebased yet.
+          # For push/workflow_dispatch events the expression is empty
+          # and checkout falls back to its default (the triggering ref).
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: cargo build
