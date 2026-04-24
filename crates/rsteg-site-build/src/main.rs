@@ -37,6 +37,7 @@ struct SourceBinding {
 const BINDINGS: &[SourceBinding] = &[
     SourceBinding { name: "intro",          source: "README.md" },
     SourceBinding { name: "lsb-basics",     source: "README.md" },
+    SourceBinding { name: "install",        source: "README.md" },
     SourceBinding { name: "bench-headline", source: "bench/README.md" },
 ];
 
