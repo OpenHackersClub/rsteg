@@ -48,6 +48,19 @@ const TARGETS: &[&str] = &[
     "public/benchmarks/index.html",
 ];
 
+/// Source HTML under `crates/rsteg-web/src/pages/` mirrored into `public/`
+/// so the static artifact is self-contained — `/algo` works under any
+/// local static server, not only behind Cloudflare Pages. The axum crate
+/// serves these same files via `include_str!` at runtime, so source of
+/// truth stays the `pages/` dir.
+const ALGO_MIRROR: &[(&str, &str)] = &[
+    ("crates/rsteg-web/src/pages/algo_index.html",     "public/algo/index.html"),
+    ("crates/rsteg-web/src/pages/lsb_linear.html",     "public/algo/lsb-linear/index.html"),
+    ("crates/rsteg-web/src/pages/lsb_permuted.html",   "public/algo/lsb-permuted/index.html"),
+    ("crates/rsteg-web/src/pages/payload_header.html", "public/algo/payload-header/index.html"),
+    ("crates/rsteg-web/src/pages/aead.html",           "public/algo/aead/index.html"),
+];
+
 fn main() -> ExitCode {
     let repo_root = repo_root();
 
@@ -103,8 +116,42 @@ fn main() -> ExitCode {
             println!("unchanged {}", rel);
         }
     }
+    match mirror_algo_pages(&repo_root) {
+        Ok(n) => changed += n,
+        Err(e) => {
+            eprintln!("error: mirroring algo pages: {e}");
+            return ExitCode::from(1);
+        }
+    }
     println!("{changed} file(s) changed.");
     ExitCode::SUCCESS
+}
+
+/// Copy each `(source, target)` pair from `ALGO_MIRROR` into the repo,
+/// writing only when the content differs. Creates missing parent
+/// directories. Returns the number of files actually written.
+fn mirror_algo_pages(repo_root: &Path) -> Result<usize, String> {
+    let mut changed = 0usize;
+    for (src_rel, tgt_rel) in ALGO_MIRROR {
+        let src = repo_root.join(src_rel);
+        let tgt = repo_root.join(tgt_rel);
+        let content = fs::read_to_string(&src)
+            .map_err(|e| format!("reading {}: {e}", src.display()))?;
+        let existing = fs::read_to_string(&tgt).ok();
+        if existing.as_deref() == Some(content.as_str()) {
+            println!("unchanged {}", tgt_rel);
+            continue;
+        }
+        if let Some(parent) = tgt.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("creating {}: {e}", parent.display()))?;
+        }
+        fs::write(&tgt, &content)
+            .map_err(|e| format!("writing {}: {e}", tgt.display()))?;
+        changed += 1;
+        println!("updated {}", tgt_rel);
+    }
+    Ok(changed)
 }
 
 /// Walk up from CARGO_MANIFEST_DIR to find the workspace root (the dir
@@ -224,6 +271,30 @@ mod tests {
         let html = "<!-- site:begin mystery --><!-- site:end mystery -->";
         let err = splice_all(html, &HashMap::new()).unwrap_err();
         assert!(err.contains("mystery"));
+    }
+
+    #[test]
+    fn mirror_skips_when_target_matches_source() {
+        // Isolated tmp dir acting as a fake repo root. We only exercise
+        // the "target exists and equals source" branch — the full list
+        // is data-driven from ALGO_MIRROR so this test focuses on the
+        // idempotency contract that the CI sync check depends on.
+        let tmp = std::env::temp_dir().join(format!(
+            "rsteg-site-build-mirror-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        for (src_rel, tgt_rel) in ALGO_MIRROR {
+            let src = tmp.join(src_rel);
+            let tgt = tmp.join(tgt_rel);
+            fs::create_dir_all(src.parent().unwrap()).unwrap();
+            fs::create_dir_all(tgt.parent().unwrap()).unwrap();
+            fs::write(&src, "<html>same</html>").unwrap();
+            fs::write(&tgt, "<html>same</html>").unwrap();
+        }
+        let n = mirror_algo_pages(&tmp).unwrap();
+        assert_eq!(n, 0, "no files should be rewritten when content matches");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

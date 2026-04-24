@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — AEAD envelope</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --danger: #ff7b72;
+      --code: #f85149;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 960px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 34px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 36px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+    .topnav .links { display: flex; gap: 14px; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
+    .topnav .title b { color: var(--fg); }
+
+    .vis-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 14px 0; }
+    .vis-wrap svg { width: 100%; height: auto; display: block; }
+
+    .ct-layout {
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; margin: 10px 0;
+      font-family: var(--mono); font-size: 12px;
+      overflow-x: auto;
+    }
+
+    table.params {
+      border-collapse: collapse; width: 100%; margin: 10px 0;
+      font-size: 13px;
+    }
+    table.params th, table.params td {
+      text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    table.params thead th {
+      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    table.params td.k { font-family: var(--mono); color: var(--accent); }
+    table.params td.v { font-family: var(--mono); }
+    table.params td.note { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="links">
+    <a href="/">home</a>
+    <a href="/algo">algos</a>
+    <a href="/benchmarks">benchmarks</a>
+  </div>
+  <div class="title"><b>AEAD envelope</b> <span class="muted">— XChaCha20-Poly1305 + Argon2id</span></div>
+</nav>
+
+<h1>AEAD envelope</h1>
+<p class="muted">
+  Steganography hides <em>that</em> a message exists. AEAD (authenticated
+  encryption with associated data) hides <em>what</em> it says — and
+  cryptographically binds the envelope's metadata so a tamperer can't swap
+  scheme, density, or body length without the recipient noticing. rsteg's
+  default is XChaCha20-Poly1305 sealed with a key derived from the user's
+  passphrase via Argon2id.
+</p>
+
+<h2>What's in the envelope</h2>
+
+<div class="ct-layout">
+offset  size  field
+ 0      1     kdf_id           (2 = Argon2id)
+ 1      1     kdf_version      (1 = OWASP 2023 params)
+ 2      16    salt             fresh OS-RNG bytes per seal
+18      24    nonce            fresh OS-RNG bytes per seal
+42      N     ciphertext       XChaCha20 keystream XOR plaintext; len == plaintext_len
+42+N    16    poly1305_tag     MAC over ciphertext + AAD
+</div>
+
+<p>
+  Overhead: <strong>58 bytes</strong> per payload regardless of plaintext size.
+  The whole thing becomes the <em>body</em> of a <a href="/algo/payload-header">
+  PayloadHeader</a>-framed message with <code>flags.encrypted = 1</code> and
+  <code>crypto_fourcc = b"XCA1"</code>.
+</p>
+
+<h2>Seal flow</h2>
+
+<div class="vis-wrap">
+  <svg viewBox="0 0 940 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AEAD seal flow">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8b949e"/>
+      </marker>
+      <marker id="ar-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7ee787"/>
+      </marker>
+      <marker id="ar-accent" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#79c0ff"/>
+      </marker>
+    </defs>
+
+    <!-- Input boxes (left column) -->
+    <g font-family="ui-monospace, Menlo, monospace">
+      <!-- Passphrase -->
+      <rect x="20" y="40" width="190" height="48" rx="4" fill="#161b22" stroke="#7ee787"/>
+      <text x="115" y="58" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">passphrase</text>
+      <text x="115" y="76" text-anchor="middle" fill="#8b949e" font-size="11">Zeroizing&lt;Vec&lt;u8&gt;&gt;, from stdin</text>
+
+      <!-- Salt -->
+      <rect x="20" y="108" width="190" height="48" rx="4" fill="#161b22" stroke="#79c0ff"/>
+      <text x="115" y="126" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">salt</text>
+      <text x="115" y="144" text-anchor="middle" fill="#8b949e" font-size="11">16 B from OS RNG</text>
+
+      <!-- Plaintext -->
+      <rect x="20" y="196" width="190" height="48" rx="4" fill="#161b22" stroke="#ffa657"/>
+      <text x="115" y="214" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">plaintext body</text>
+      <text x="115" y="232" text-anchor="middle" fill="#8b949e" font-size="11">N bytes, arbitrary</text>
+
+      <!-- Nonce -->
+      <rect x="20" y="264" width="190" height="48" rx="4" fill="#161b22" stroke="#79c0ff"/>
+      <text x="115" y="282" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">nonce</text>
+      <text x="115" y="300" text-anchor="middle" fill="#8b949e" font-size="11">24 B from OS RNG, per seal</text>
+
+      <!-- AAD -->
+      <rect x="20" y="332" width="190" height="58" rx="4" fill="#161b22" stroke="#d2a8ff"/>
+      <text x="115" y="352" text-anchor="middle" fill="#e6edf3" font-size="13" font-weight="600">AAD (74 B)</text>
+      <text x="115" y="370" text-anchor="middle" fill="#8b949e" font-size="11">outer PayloadHeader (32 B)</text>
+      <text x="115" y="384" text-anchor="middle" fill="#8b949e" font-size="11">  ‖ inner crypto-header (42 B)</text>
+    </g>
+
+    <!-- Argon2id box -->
+    <g font-family="ui-monospace, Menlo, monospace">
+      <rect x="310" y="54" width="220" height="90" rx="6" fill="#0f2f18" stroke="#7ee787" stroke-width="2"/>
+      <text x="420" y="78" text-anchor="middle" fill="#7ee787" font-size="14" font-weight="700">Argon2id</text>
+      <text x="420" y="98" text-anchor="middle" fill="#e6edf3" font-size="11">m=65536 (64 MiB)</text>
+      <text x="420" y="114" text-anchor="middle" fill="#e6edf3" font-size="11">t=3, p=1</text>
+      <text x="420" y="130" text-anchor="middle" fill="#e6edf3" font-size="11">out = 32 B key</text>
+    </g>
+
+    <!-- Key -->
+    <g font-family="ui-monospace, Menlo, monospace">
+      <rect x="600" y="82" width="170" height="42" rx="4" fill="#1f3a1f" stroke="#7ee787"/>
+      <text x="685" y="102" text-anchor="middle" fill="#7ee787" font-size="13" font-weight="700">key (32 B)</text>
+      <text x="685" y="118" text-anchor="middle" fill="#8b949e" font-size="10">Zeroizing, drops on scope exit</text>
+    </g>
+
+    <!-- XChaCha20-Poly1305 box -->
+    <g font-family="ui-monospace, Menlo, monospace">
+      <rect x="470" y="200" width="300" height="160" rx="8" fill="#0a1f33" stroke="#79c0ff" stroke-width="2"/>
+      <text x="620" y="226" text-anchor="middle" fill="#79c0ff" font-size="14" font-weight="700">XChaCha20-Poly1305 seal</text>
+      <text x="620" y="246" text-anchor="middle" fill="#e6edf3" font-size="11">XChaCha20 keystream ⊕ plaintext</text>
+      <text x="620" y="262" text-anchor="middle" fill="#e6edf3" font-size="11">Poly1305 over (ciphertext ‖ AAD)</text>
+      <line x1="500" y1="278" x2="740" y2="278" stroke="#30363d" stroke-dasharray="3 3"/>
+      <text x="620" y="300" text-anchor="middle" fill="#8b949e" font-size="11">inputs: key, nonce, plaintext, AAD</text>
+      <text x="620" y="318" text-anchor="middle" fill="#8b949e" font-size="11">outputs: ciphertext (N B), tag (16 B)</text>
+      <text x="620" y="344" text-anchor="middle" fill="#8b949e" font-size="10">stream cipher — no block padding</text>
+    </g>
+
+    <!-- Output -->
+    <g font-family="ui-monospace, Menlo, monospace">
+      <rect x="810" y="210" width="115" height="140" rx="4" fill="#161b22" stroke="#ffa657"/>
+      <text x="867" y="236" text-anchor="middle" fill="#ffa657" font-size="12" font-weight="700">output</text>
+      <text x="867" y="260" text-anchor="middle" fill="#e6edf3" font-size="11">metadata</text>
+      <text x="867" y="274" text-anchor="middle" fill="#8b949e" font-size="10">42 B</text>
+      <text x="867" y="298" text-anchor="middle" fill="#e6edf3" font-size="11">ciphertext</text>
+      <text x="867" y="312" text-anchor="middle" fill="#8b949e" font-size="10">N B</text>
+      <text x="867" y="336" text-anchor="middle" fill="#e6edf3" font-size="11">tag</text>
+      <text x="867" y="350" text-anchor="middle" fill="#8b949e" font-size="10">16 B</text>
+    </g>
+
+    <!-- Arrows -->
+    <!-- passphrase & salt → Argon2id -->
+    <line x1="210" y1="64" x2="308" y2="80"  stroke="#8b949e" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="210" y1="132" x2="308" y2="110" stroke="#8b949e" stroke-width="1.4" marker-end="url(#ar)"/>
+    <!-- Argon2id → key -->
+    <line x1="530" y1="100" x2="598" y2="103" stroke="#7ee787" stroke-width="1.8" marker-end="url(#ar-green)"/>
+    <!-- key → AEAD -->
+    <line x1="685" y1="124" x2="660" y2="200" stroke="#7ee787" stroke-width="1.8" marker-end="url(#ar-green)"/>
+    <!-- plaintext → AEAD -->
+    <line x1="210" y1="220" x2="468" y2="250" stroke="#ffa657" stroke-width="1.4" marker-end="url(#ar)"/>
+    <!-- nonce → AEAD -->
+    <line x1="210" y1="288" x2="468" y2="280" stroke="#79c0ff" stroke-width="1.4" marker-end="url(#ar-accent)"/>
+    <!-- AAD → AEAD -->
+    <line x1="210" y1="360" x2="468" y2="310" stroke="#d2a8ff" stroke-width="1.4" marker-end="url(#ar)"/>
+    <!-- AEAD → output -->
+    <line x1="770" y1="280" x2="808" y2="280" stroke="#8b949e" stroke-width="1.4" marker-end="url(#ar)"/>
+
+    <!-- Footer annotation -->
+    <text x="20" y="430" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#8b949e">
+      binds into tag ←→  any bit flip in AAD or ciphertext breaks Poly1305 verification and returns BadPassphrase
+    </text>
+    <text x="20" y="450" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#8b949e">
+      final 58-byte AEAD preamble + N-byte ciphertext becomes the "body" of the outer PayloadHeader
+    </text>
+  </svg>
+</div>
+
+<h2>Why Argon2id (not PBKDF2 or scrypt)</h2>
+
+<p>
+  PBKDF2 is HMAC in a loop — CPU-bound. A modern GPU or ASIC can run tens of
+  millions of PBKDF2-SHA256 candidates per second, because HMAC uses almost no
+  memory. A 600 000-iteration PBKDF2 defence (OWASP 2023) collapses to minutes
+  against a moderately-resourced attacker with a dictionary.
+</p>
+
+<p>
+  <strong>Memory-hard</strong> KDFs require the attacker to allocate large
+  per-guess working memory that can't be amortized across guesses. scrypt was
+  the first mainstream design; Argon2 (RFC 9106) is the PHC winner that
+  superseded it.
+</p>
+
+<p>
+  Within Argon2: the <strong>-id</strong> variant is the OWASP default. Argon2d
+  has side-channel leaks (memory access pattern depends on secrets — fine on
+  a server, bad on a shared client). Argon2i resists side-channels but has
+  weaker time-memory tradeoffs. Argon2id runs one i-pass then a d-pass, and
+  gets the best of both for password hashing.
+</p>
+
+<table class="params">
+  <thead><tr><th>parameter</th><th>value</th><th>note</th></tr></thead>
+  <tbody>
+    <tr><td class="k">m_cost</td><td class="v">65536</td><td class="note">64 MiB memory per derivation — dominates cost</td></tr>
+    <tr><td class="k">t_cost</td><td class="v">3</td><td class="note">three iterations (passes over memory)</td></tr>
+    <tr><td class="k">p_cost</td><td class="v">1</td><td class="note">single-lane; we don't parallelize a user password</td></tr>
+    <tr><td class="k">salt</td><td class="v">16 B OS entropy</td><td class="note">distinct per-file; prevents rainbow tables</td></tr>
+    <tr><td class="k">output</td><td class="v">32 B</td><td class="note">XChaCha20 key</td></tr>
+  </tbody>
+</table>
+
+<p class="muted" style="font-size:13px">
+  At 64 MiB × 3 passes on a modern CPU, one KDF call takes ~300–500 ms.
+  A brute-force attacker pays that per candidate — a 10⁶-word dictionary is
+  days on one machine, weeks on a small cluster. That's the right ballpark
+  for file-at-rest steganography.
+</p>
+
+<h2>Why XChaCha20-Poly1305 (not AES-GCM)</h2>
+<p>
+  AES-GCM is a fine AEAD. It's fast on CPUs with AES-NI, it's standardized,
+  it's what TLS uses. But it has a nonce-reuse cliff: the same (key, nonce)
+  pair with different plaintexts leaks the XOR of the plaintexts and destroys
+  the MAC. GCM nonces are 96 bits; birthday-collision on random 96-bit values
+  shows up around 2⁴⁸ messages — reachable for a busy server, not reachable
+  for a steganography tool, but <em>not</em> robust to buggy callers.
+</p>
+<p>
+  XChaCha20 uses a 192-bit extended nonce. Birthday bound is 2⁹⁶ — practically
+  unreachable. You can generate a fresh random nonce per seal from the OS RNG
+  with no counter, no state, no collision worry. That's the right property
+  for a library that might be called from a shell pipeline with no persistent
+  storage.
+</p>
+<p>
+  XChaCha20 is also a <strong>stream cipher</strong>, so there's no block
+  padding and no padding-oracle class of bug. Poly1305 is a 128-bit
+  universal-hash MAC computed over <em>ciphertext concatenated with AAD</em>,
+  constant-time verified via <code>subtle::ConstantTimeEq</code> in the
+  RustCrypto implementation. All four properties — large nonce, no padding,
+  fast on commodity CPUs, audited implementation — make it the conservative
+  pick for this use case.
+</p>
+
+<h2>The AAD binds the outer header into the tag</h2>
+<p>
+  The <em>associated data</em> for Poly1305 is:
+</p>
+<pre>aad = outer_payload_header (32 B)
+    || inner_crypto_header (42 B: kdf_id, kdf_version, salt, nonce)</pre>
+<p>
+  This is the whole point. Consider the attacks AAD defends against:
+</p>
+<ul>
+  <li>
+    <strong>Scheme downgrade.</strong> An attacker flips <code>scheme_fourcc</code>
+    from <code>BLSP</code> (permuted) to <code>BLSL</code> (linear), hoping the
+    victim re-extracts in linear order and silently gets garbage that
+    statistically leaks something. With AAD binding: extracting with any
+    non-writer scheme fourcc fails Poly1305 verification → <code>BadPassphrase</code>.
+  </li>
+  <li>
+    <strong>Density flip.</strong> Flipping density from 1 to 2 would read
+    twice as many bits per sample — garbling the plaintext into something
+    that happens to CRC-match. AAD-binding shuts this down.
+  </li>
+  <li>
+    <strong>Length truncation.</strong> Setting <code>body_len</code> to a
+    smaller value to truncate the output. Tag fails.
+  </li>
+  <li>
+    <strong>Rollback / replay.</strong> An attacker replacing the AEAD preamble
+    (salt/nonce) from an older message can't reuse the tag — the inner
+    crypto-header is part of AAD too.
+  </li>
+</ul>
+
+<h2>Open flow — and why it returns a single error</h2>
+<p>
+  <code>open(ciphertext, passphrase, outer_header)</code> runs the seal flow in
+  reverse: parse the 42-byte AEAD preamble, reject unknown
+  <code>kdf_id</code>/<code>kdf_version</code>, reconstruct AAD exactly, run
+  Argon2id with the parsed salt, decrypt-and-verify with XChaCha20-Poly1305.
+</p>
+<p>
+  <strong>Any failure — wrong passphrase, tampered ciphertext, tampered AAD,
+  truncated input, tampered nonce — returns the same error,
+  <code>Error::BadPassphrase</code>.</strong> No subdivision. The spec 06
+  invariant: the caller cannot distinguish "you typed the password wrong"
+  from "someone flipped a bit in the header". That distinction would leak a
+  side channel for the adversary to tell whether their tamper landed on a
+  signed region or not.
+</p>
+
+<h2>What is <em>not</em> protected</h2>
+<p>
+  Steganographic concealment: the AEAD envelope still looks like a 58-byte
+  preamble followed by N + 16 bytes. A strong steganalyser with access to the
+  plaintext cover can still detect that <em>something</em> has been written
+  to the LSB plane — no AEAD fixes that. It's the
+  <a href="/algo/lsb-permuted">permuted walk</a> plus reasonable density
+  choice that handles concealment. AEAD handles confidentiality and tamper
+  resistance <em>given</em> concealment.
+</p>
+<p>
+  Post-compromise: if the passphrase leaks, every past file encrypted with
+  that passphrase is recoverable. rsteg does not implement forward secrecy —
+  which would require per-file asymmetric crypto and is out of scope for a
+  local-file tool.
+</p>
+
+</body>
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — PayloadHeader</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --danger: #ff7b72;
+      --code: #f85149;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 960px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 34px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 36px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+    .kbd {
+      font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+      padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    input[type="text"], select {
+      background: var(--panel-2); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 7px 9px;
+      font-family: var(--mono); font-size: 13px;
+    }
+    label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+    button {
+      background: var(--accent); color: #0d1117; border: 0; border-radius: 4px;
+      padding: 7px 14px; font-weight: 600; font-size: 13px; cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { filter: brightness(1.1); }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+    .topnav .links { display: flex; gap: 14px; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
+    .topnav .title b { color: var(--fg); }
+
+    .form-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px 14px;
+    }
+    .form-grid .checkbox {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 13px; color: var(--fg);
+      margin-top: 22px;
+    }
+
+    /* Hex display with field-colored spans */
+    .hex-render {
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 14px 16px; margin: 10px 0 6px;
+      font-family: var(--mono); font-size: 14px; line-height: 1.8;
+      overflow-x: auto;
+    }
+    .hex-render .byte { padding: 2px 2px; border-radius: 2px; }
+    .hex-render .gap { display: inline-block; width: 6px; }
+
+    /* Field color classes — distinct per field */
+    .f-magic          { background: #0f2f18; color: var(--accent); }
+    .f-version        { background: #0a1f33; color: var(--accent-2); }
+    .f-flags          { background: #2a1f08; color: var(--warn); }
+    .f-crypto_fourcc  { background: #2a1030; color: #d2a8ff; }
+    .f-scheme_fourcc  { background: #0a2a2a; color: #76e4e4; }
+    .f-density        { background: #3a1a1a; color: var(--danger); }
+    .f-reserved       { background: var(--panel); color: var(--muted); }
+    .f-body_len       { background: #2a2b0b; color: #e9e060; }
+    .f-body_crc32     { background: #2a1b0a; color: #e6a16c; }
+
+    /* Field table */
+    .field-table {
+      border-collapse: collapse; width: 100%; margin: 10px 0;
+      font-size: 12px;
+    }
+    .field-table th, .field-table td {
+      text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .field-table thead th {
+      background: var(--panel-2); font-family: var(--mono); font-size: 11px;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .field-table td.n {
+      font-family: var(--mono); font-weight: 600;
+      padding-right: 4px;
+    }
+    .field-table td.meta { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+    .field-table td.value { font-family: var(--mono); color: var(--fg); }
+    .field-table td.note { color: var(--muted); font-size: 12px; }
+
+    .status { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .status.err { color: var(--danger); }
+
+    .vis-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 14px 0; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="links">
+    <a href="/">home</a>
+    <a href="/algo">algos</a>
+    <a href="/benchmarks">benchmarks</a>
+  </div>
+  <div class="title"><b>PayloadHeader</b> <span class="muted">— 32 bytes</span></div>
+</nav>
+
+<h1>PayloadHeader</h1>
+<p class="muted">
+  Every rsteg-written carrier starts its embedded bitstream with a fixed 32-byte
+  frame. The frame answers four questions for the extractor: "is this an rsteg
+  file?", "which scheme was used?", "how many body bytes follow?", and "was it
+  encrypted?" — without which extract would have to guess.
+</p>
+
+<h2>The 32-byte wire format</h2>
+<pre>offset  size  field            role
+ 0      4     magic            b"RSTG" — false-positive filter on extract
+ 4      1     version          wire version, current = 1
+ 5      1     flags            bit0 encrypted, bit1 compressed, bit2 permuted
+ 6      4     crypto_fourcc    AEAD scheme id (e.g. b"XCA1"); all-zero for plaintext
+10      4     scheme_fourcc    carrier + walk (BLSL, BLSP, WLSL, …)
+14      1     density          bits written per sample, 1..=4
+15      1     reserved         must be zero
+16      4     body_len         u32 big-endian length of body bytes that follow
+20      4     body_crc32       CRC32-IEEE of plaintext body; zero when encrypted
+24      8     reserved         all zero, preserves 32-byte frame for future extensions</pre>
+
+<p class="muted" style="font-size:13px">
+  Source of truth: <code>crates/rsteg-core/src/header.rs</code>.
+  All multi-byte integers are big-endian — picked because <code>RSTG</code>
+  reads left-to-right in a hex dump and because network byte order is the
+  default when there's no good reason to pick otherwise.
+</p>
+
+<h2>Try it — encode a header</h2>
+
+<div class="panel">
+  <p class="muted" style="font-size:13px; margin-top:0">
+    Build a header with the form below. The page posts to
+    <code>POST /api/algo/header-encode</code>, which calls
+    <code>PayloadHeader::encode()</code> on the server and returns the 32 bytes
+    plus field metadata. Every field is colored both in the hex and in the
+    table so you can line them up visually.
+  </p>
+
+  <div class="form-grid">
+    <div>
+      <label for="scheme">scheme_fourcc</label>
+      <select id="scheme">
+        <option value="bmp-lsb-linear" selected>bmp-lsb-linear (BLSL)</option>
+        <option value="bmp-lsb-permuted">bmp-lsb-permuted (BLSP)</option>
+        <option value="wav-lsb-linear">wav-lsb-linear (WLSL)</option>
+        <option value="wav-lsb-permuted">wav-lsb-permuted (WLSP)</option>
+        <option value="png-lsb-linear">png-lsb-linear (PLSL)</option>
+        <option value="png-lsb-permuted">png-lsb-permuted (PLSP)</option>
+      </select>
+    </div>
+    <div>
+      <label for="density">density (bits per sample)</label>
+      <select id="density">
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+    <div>
+      <label for="body">body (hex)</label>
+      <input type="text" id="body" value="48656c6c6f2c2077" spellcheck="false" autocomplete="off" />
+    </div>
+    <div class="checkbox">
+      <input type="checkbox" id="encrypted" />
+      <label for="encrypted" style="margin:0">encrypted (sets bit0 + crypto_fourcc=XCA2, zeros body_crc32)</label>
+    </div>
+  </div>
+  <button id="encode" style="margin-top:12px">encode</button>
+
+  <div id="hex-output" class="hex-render" aria-live="polite"></div>
+
+  <table class="field-table" id="field-table">
+    <thead>
+      <tr>
+        <th style="width: 2%"></th>
+        <th style="width: 16%">field</th>
+        <th style="width: 12%">offset</th>
+        <th style="width: 8%">size</th>
+        <th style="width: 25%">value</th>
+        <th>note</th>
+      </tr>
+    </thead>
+    <tbody id="field-rows"></tbody>
+  </table>
+
+  <div id="status" class="status">loading…</div>
+</div>
+
+<h2>Why each field is there</h2>
+
+<h3>magic <code>b"RSTG"</code></h3>
+<p>
+  A four-byte tag checked first on every extract. It doesn't provide any
+  security — an attacker who knows the format can reproduce the magic — but it
+  cheaply rules out the 99.99% of carrier files that aren't rsteg files. Without
+  it, <em>every</em> extract would have to try the whole rest of the decode
+  pipeline and probably fail deep inside, producing confusing errors.
+</p>
+
+<h3>version</h3>
+<p>
+  A 1-byte wire version. Currently <code>0x01</code>. <code>decode()</code>
+  rejects anything else with <code>Error::HeaderBadVersion</code>. This gives us
+  a clean upgrade path: version 2 can add fields by co-opting the reserved
+  bytes, and old readers will refuse to misinterpret them.
+</p>
+
+<h3>flags</h3>
+<p>
+  A 1-byte bitfield:
+</p>
+<ul>
+  <li><code>bit0 FLAG_ENCRYPTED</code> — the body is an AEAD ciphertext; see the <a href="/algo/aead">AEAD page</a>.</li>
+  <li><code>bit1 FLAG_COMPRESSED</code> — reserved for phase 3; not written yet.</li>
+  <li><code>bit2 FLAG_PERMUTED</code> — embed/extract use <a href="/algo/lsb-permuted">passphrase-seeded shuffle</a> order.</li>
+  <li><code>bits 3..7</code> — must be zero; decoder rejects with <code>HeaderReservedBitsSet</code>.</li>
+</ul>
+<p class="muted" style="font-size:13px">
+  Rejecting unknown flags on read is deliberate. A future writer adding
+  <code>bit3</code> must also bump the version; a zero-policy on reserved bits
+  catches accidental corruption that happens to land in a known-flag position.
+</p>
+
+<h3>crypto_fourcc + scheme_fourcc</h3>
+<p>
+  Two orthogonal identifiers. <code>scheme_fourcc</code> tells the format
+  adapter how to walk samples (which carrier and linear vs permuted — e.g.
+  <code>BLSL</code> = BMP LSB linear). <code>crypto_fourcc</code> tells the
+  crypto registry which seal/open to run; it's all-zero for plaintext payloads.
+  Separating them lets every carrier × walk × crypto combination compose freely.
+</p>
+
+<h3>density</h3>
+<p>
+  One byte in <code>1..=4</code>. Determines how many low bits per sample are
+  overwritten, which in turn determines capacity and perceptual delta. The
+  decoder enforces the range and returns
+  <code>Error::DensityOutOfRange</code> for anything else.
+</p>
+
+<h3>body_len + body_crc32</h3>
+<p>
+  <code>body_len</code> is the big-endian <code>u32</code> length of the
+  payload that follows. It caps how many post-header bytes the extractor reads
+  and therefore bounds the walk. <code>body_crc32</code> is a CRC32-IEEE of
+  the plaintext body for unencrypted payloads — a cheap integrity hint for
+  detecting walk-miscount or a wrong density. <strong>For encrypted payloads
+  it's zero</strong>: the Poly1305 tag inside the AEAD envelope already
+  authenticates the ciphertext, and a second integrity check on plaintext
+  would force the decoder to leak timing info about decryption success.
+</p>
+
+<h3>reserved bytes</h3>
+<p>
+  One byte at offset 15, eight bytes at offset 24..32. All must be zero on
+  write and are checked on read. They reserve space for forward-compatible
+  fields — e.g. an explicit <code>seed_hint</code> or a
+  <code>content_type</code> hint — without rewriting the frame.
+</p>
+
+<h2>Detection on extract</h2>
+<p>
+  The extractor starts by reading 32 bytes' worth of embedding units from the
+  carrier — which is <code>256 / density</code> samples at density 1..4. For
+  a 24-bit BMP that's:
+</p>
+<ul>
+  <li>density 1 → 256 sample bytes (~86 pixels)</li>
+  <li>density 2 → 128 sample bytes</li>
+  <li>density 3 → 86 sample bytes</li>
+  <li>density 4 → 64 sample bytes (~21 pixels)</li>
+</ul>
+<p>
+  The first 32 bytes of that bitstream are decoded as a <code>PayloadHeader</code>.
+  If the magic isn't <code>RSTG</code>, <code>decode()</code> returns
+  <code>Error::HeaderMissing</code> — the extractor stops immediately. Cost of
+  being wrong: ~250 bytes read from a potentially multi-MB carrier. The
+  false-positive rate on random data is 2⁻³² per trial, so we never
+  mistake a non-rsteg file for an rsteg one.
+</p>
+
+<h2>The whole thing in 20-ish lines of Rust</h2>
+<pre>pub fn encode(&self) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    out[0..4].copy_from_slice(b"RSTG");
+    out[4] = self.version;
+    out[5] = self.flags;
+    out[6..10].copy_from_slice(&self.crypto_fourcc);
+    out[10..14].copy_from_slice(&self.scheme_fourcc.0);
+    out[14] = self.density;
+    // 15 stays zero (reserved)
+    out[16..20].copy_from_slice(&self.body_len.to_be_bytes());
+    out[20..24].copy_from_slice(&self.body_crc32.to_be_bytes());
+    // 24..32 stay zero (reserved)
+    out
+}</pre>
+<p class="muted" style="font-size:13px">
+  No serde, no proc-macros, no framework. Fixed layout, hand-written, trivial
+  to audit. This is what rsteg means by "supply-chain minimization" — every
+  byte of this wire format is in the open and reproducible from the spec.
+</p>
+
+<script>
+  const schemeEl = document.getElementById("scheme");
+  const densityEl = document.getElementById("density");
+  const bodyEl = document.getElementById("body");
+  const encEl = document.getElementById("encrypted");
+  const encodeBtn = document.getElementById("encode");
+  const hexOut = document.getElementById("hex-output");
+  const rowsEl = document.getElementById("field-rows");
+  const statusEl = document.getElementById("status");
+
+  async function encode() {
+    statusEl.classList.remove("err");
+    statusEl.textContent = "encoding…";
+    try {
+      const r = await fetch("/api/algo/header-encode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheme: schemeEl.value,
+          density: parseInt(densityEl.value, 10),
+          body_hex: bodyEl.value.trim(),
+          encrypted: encEl.checked,
+        }),
+      });
+      if (!r.ok) {
+        const body = await r.text();
+        statusEl.classList.add("err");
+        statusEl.textContent = "error: " + body;
+        return;
+      }
+      const j = await r.json();
+      renderHex(j.hex, j.fields);
+      renderTable(j.fields);
+      statusEl.textContent =
+        "32-byte header encoded · body_len=" + j.body_len +
+        " · body_crc32=0x" + j.body_crc32.toString(16).padStart(8, "0");
+    } catch (err) {
+      statusEl.classList.add("err");
+      statusEl.textContent = "fetch error: " + err.message;
+    }
+  }
+
+  function fieldClassForOffset(offset, fields) {
+    // Find the (last-matching) field whose [offset, offset+size) covers `offset`.
+    // Reserved fields appear twice at distinct offsets; we scan in order.
+    for (const f of fields) {
+      if (offset >= f.offset && offset < f.offset + f.size) {
+        return "f-" + f.name;
+      }
+    }
+    return "f-reserved";
+  }
+
+  function renderHex(hex, fields) {
+    // hex is 64 uppercase chars = 32 bytes. Render two bytes per "word", a row per 8 bytes.
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) bytes.push(hex.substr(i, 2));
+    let html = "";
+    for (let row = 0; row < 4; row++) {
+      const start = row * 8;
+      html += '<div>';
+      html += '<span style="color:#8b949e; margin-right:10px; font-size:12px">' +
+              start.toString(16).padStart(2, "0") + ':</span>';
+      for (let i = 0; i < 8; i++) {
+        const off = start + i;
+        if (off >= bytes.length) break;
+        const cls = fieldClassForOffset(off, fields);
+        html += '<span class="byte ' + cls + '" title="offset ' + off + '">' + bytes[off] + '</span>';
+        if (i !== 7) html += '<span class="gap"></span>';
+      }
+      html += '</div>';
+    }
+    hexOut.innerHTML = html;
+  }
+
+  function renderTable(fields) {
+    rowsEl.innerHTML = "";
+    for (const f of fields) {
+      const tr = document.createElement("tr");
+      const swatch = '<span class="byte f-' + f.name + '" style="display:inline-block; width:14px; height:14px; border-radius:2px">&nbsp;</span>';
+      tr.innerHTML =
+        '<td class="n">' + swatch + '</td>' +
+        '<td class="n"><code>' + f.name + '</code></td>' +
+        '<td class="meta">' + f.offset + '..' + (f.offset + f.size) + '</td>' +
+        '<td class="meta">' + f.size + ' B</td>' +
+        '<td class="value">' + escapeHtml(f.value) + '</td>' +
+        '<td class="note">' + escapeHtml(f.note) + '</td>';
+      rowsEl.appendChild(tr);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"
+    })[c]);
+  }
+
+  encodeBtn.addEventListener("click", encode);
+  schemeEl.addEventListener("change", encode);
+  densityEl.addEventListener("change", encode);
+  encEl.addEventListener("change", encode);
+  let bodyTimer = null;
+  bodyEl.addEventListener("input", () => {
+    clearTimeout(bodyTimer);
+    bodyTimer = setTimeout(encode, 200);
+  });
+  encode();
+</script>
+
+</body>
+</html>
