@@ -3,11 +3,15 @@ name: Deploy Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-pages
-  cancel-in-progress: false
+  # One deploy per ref (branch or PR). Superseded commits get cancelled —
+  # Pages deploys are idempotent, only the latest matters.
+  group: deploy-pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -16,22 +20,62 @@ jobs:
     permissions:
       contents: read
       deployments: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For pull_request events, deploy the PR branch HEAD as-pushed
+          # (not the synthesized refs/pull/N/merge commit). Matches the
+          # CI workflow's checkout policy.
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Stage algo explainer pages into public/
+        # The /algo/* pages live under the axum crate as include_str! HTML.
+        # For the static Pages artifact we copy them into public/ with
+        # directory-index paths so URLs match the server routes. The
+        # interactive /api/algo/* POSTs need the Rust backend and will not
+        # work from the static preview — intentional; preview shows the
+        # SVG diagrams and prose.
+        run: |
+          src=crates/rsteg-web/src/pages
+          mkdir -p public/algo/lsb-linear public/algo/lsb-permuted public/algo/payload-header public/algo/aead
+          cp "$src/algo_index.html"     public/algo/index.html
+          cp "$src/lsb_linear.html"     public/algo/lsb-linear/index.html
+          cp "$src/lsb_permuted.html"   public/algo/lsb-permuted/index.html
+          cp "$src/payload_header.html" public/algo/payload-header/index.html
+          cp "$src/aead.html"           public/algo/aead/index.html
 
       - name: Verify static artifact
-        # The deploy artifact is checked-in static HTML — no Rust build needed.
-        # Fail fast if the directory or index page is missing so broken state
-        # never ships to Pages.
         run: |
           test -d public || { echo "public/ missing"; exit 1; }
           test -f public/index.html || { echo "public/index.html missing"; exit 1; }
           echo "public/ contents:"
-          ls -la public
+          find public -type f | sort
 
       - name: Deploy to Cloudflare Pages
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy public --project-name=rsteg --branch=${{ github.ref_name }}
+          # --branch=<non-production-branch> triggers a Cloudflare Pages
+          # preview deployment at <branch>.rsteg.pages.dev. For main it
+          # deploys to production.
+          command: pages deploy public --project-name=rsteg --branch=${{ github.head_ref || github.ref_name }}
+
+      - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
+          ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body "🚀 **Cloudflare Pages preview**
+          - Preview: $DEPLOY_URL
+          - Branch alias: $ALIAS_URL
+          - Commit: \`$COMMIT_SHA\`
+          - Pages: [/](${DEPLOY_URL}) · [/algo](${DEPLOY_URL}/algo) · [/algo/lsb-linear](${DEPLOY_URL}/algo/lsb-linear) · [/algo/lsb-permuted](${DEPLOY_URL}/algo/lsb-permuted) · [/algo/payload-header](${DEPLOY_URL}/algo/payload-header) · [/algo/aead](${DEPLOY_URL}/algo/aead)
+
+          Note: the \`/api/algo/*\` POST endpoints (permutation trace, header encoder) need the Rust backend and are not exercised by the static preview."
