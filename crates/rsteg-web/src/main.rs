@@ -21,6 +21,7 @@ use rsteg_bmp::BMP_ADAPTER;
 use rsteg_core::{
     shuffle, Density, EmbedOpts, ExtractOpts, FormatAdapter, PayloadHeader, Prng, SchemeFourcc,
 };
+use rsteg_crypto_aead::FOURCC as AEAD_FOURCC;
 use serde::{Deserialize, Serialize};
 
 const INDEX_HTML: &str = include_str!("index.html");
@@ -171,8 +172,10 @@ async fn header_encode(Json(req): Json<HeaderEncodeReq>) -> Result<Json<HeaderEn
     let mut hdr = PayloadHeader::plain(scheme, density, &body);
     if req.encrypted {
         hdr.flags |= PayloadHeader::FLAG_ENCRYPTED;
+        // AEAD-sealed bodies don't carry a plaintext CRC — the Poly1305 tag
+        // in the inner crypto envelope covers integrity.
         hdr.body_crc32 = 0;
-        hdr.crypto_fourcc = *b"XCA2";
+        hdr.crypto_fourcc = AEAD_FOURCC;
     }
     let bytes = hdr.encode();
 
