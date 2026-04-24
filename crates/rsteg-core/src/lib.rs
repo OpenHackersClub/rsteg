@@ -100,6 +100,29 @@ impl Default for ExtractOpts {
     }
 }
 
+/// Authenticated-encryption scheme. Defined in `rsteg-core` so format
+/// adapters and the CLI can depend on the abstraction without pulling in
+/// any particular crypto crate.
+///
+/// Implementors live in `rsteg-crypto-aead` (default XChaCha20-Argon2id) and
+/// `rsteg-compat-steghide` (read-only AES-128-CBC for steghide interop).
+pub trait CryptoScheme: Send + Sync + 'static {
+    /// Short id, e.g. `"xchacha20-argon2id"`.
+    fn id(&self) -> &'static str;
+
+    /// Four-byte tag used in `PayloadHeader.crypto_fourcc`.
+    fn fourcc(&self) -> [u8; 4];
+
+    /// Authenticate and encrypt `plaintext`. `aad` MUST include the outer
+    /// `PayloadHeader` bytes so downgrade / rollback tamper fails tag check.
+    fn seal(&self, plaintext: &[u8], passphrase: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error>;
+
+    /// Authenticate + decrypt. On **any** authentication failure — wrong
+    /// passphrase, tampered ciphertext, tampered aad, malformed inner header —
+    /// return `Error::BadPassphrase`. Do not subdivide (spec 06 invariant).
+    fn open(&self, ciphertext: &[u8], passphrase: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error>;
+}
+
 /// Trait implemented by each carrier-format adapter.
 pub trait FormatAdapter: Send + Sync + 'static {
     fn id(&self) -> &'static str;
