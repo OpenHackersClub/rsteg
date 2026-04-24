@@ -19,11 +19,16 @@ use axum::{
 };
 use rsteg_bmp::BMP_ADAPTER;
 use rsteg_core::{
-    Density, EmbedOpts, ExtractOpts, FormatAdapter, PayloadHeader, SchemeFourcc,
+    shuffle, Density, EmbedOpts, ExtractOpts, FormatAdapter, PayloadHeader, Prng, SchemeFourcc,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const INDEX_HTML: &str = include_str!("index.html");
+const ALGO_INDEX_HTML: &str = include_str!("pages/algo_index.html");
+const ALGO_LSB_LINEAR_HTML: &str = include_str!("pages/lsb_linear.html");
+const ALGO_LSB_PERMUTED_HTML: &str = include_str!("pages/lsb_permuted.html");
+const ALGO_PAYLOAD_HEADER_HTML: &str = include_str!("pages/payload_header.html");
+const ALGO_AEAD_HTML: &str = include_str!("pages/aead.html");
 
 #[tokio::main]
 async fn main() {
@@ -34,7 +39,14 @@ async fn main() {
         .route("/api/cover", get(cover_alias))
         .route("/api/embed", post(embed_handler))
         .route("/api/extract", post(extract_handler))
-        .route("/api/inspect", post(inspect_handler));
+        .route("/api/inspect", post(inspect_handler))
+        .route("/algo", get(algo_index))
+        .route("/algo/lsb-linear", get(algo_lsb_linear))
+        .route("/algo/lsb-permuted", get(algo_lsb_permuted))
+        .route("/algo/payload-header", get(algo_payload_header))
+        .route("/algo/aead", get(algo_aead))
+        .route("/api/algo/permutation", post(permutation_trace))
+        .route("/api/algo/header-encode", post(header_encode));
 
     let addr = std::env::var("RSTEG_WEB_ADDR").unwrap_or_else(|_| "127.0.0.1:3456".to_string());
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -44,6 +56,174 @@ async fn main() {
 
 async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
+}
+
+async fn algo_index() -> Html<&'static str> {
+    Html(ALGO_INDEX_HTML)
+}
+
+async fn algo_lsb_linear() -> Html<&'static str> {
+    Html(ALGO_LSB_LINEAR_HTML)
+}
+
+async fn algo_lsb_permuted() -> Html<&'static str> {
+    Html(ALGO_LSB_PERMUTED_HTML)
+}
+
+async fn algo_payload_header() -> Html<&'static str> {
+    Html(ALGO_PAYLOAD_HEADER_HTML)
+}
+
+async fn algo_aead() -> Html<&'static str> {
+    Html(ALGO_AEAD_HTML)
+}
+
+// ---------------- Algo visualization APIs ----------------
+
+#[derive(Deserialize)]
+struct PermutationReq {
+    /// 16-char hex string, lower or upper case.
+    seed_hex: String,
+    /// Size of the embedding-unit universe (e.g. 64 for a 64-byte cover).
+    len: usize,
+}
+
+#[derive(Serialize)]
+struct PermutationResp {
+    seed: String,
+    len: usize,
+    /// `order[i]` is the carrier index visited at step `i`.
+    order: Vec<usize>,
+}
+
+async fn permutation_trace(Json(req): Json<PermutationReq>) -> Result<Json<PermutationResp>, (StatusCode, String)> {
+    if req.len == 0 || req.len > 4096 {
+        return Err((StatusCode::BAD_REQUEST, "len must be in 1..=4096".into()));
+    }
+    let seed = parse_hex_u64(req.seed_hex.trim())
+        .ok_or((StatusCode::BAD_REQUEST, "seed_hex must be 1..=16 hex chars".into()))?;
+    let mut idx: Vec<usize> = (0..req.len).collect();
+    let mut prng = Prng::new(seed);
+    shuffle(&mut prng, &mut idx);
+    Ok(Json(PermutationResp {
+        seed: format!("{seed:016x}"),
+        len: req.len,
+        order: idx,
+    }))
+}
+
+fn parse_hex_u64(s: &str) -> Option<u64> {
+    let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+    if s.is_empty() || s.len() > 16 {
+        return None;
+    }
+    u64::from_str_radix(s, 16).ok()
+}
+
+#[derive(Deserialize)]
+struct HeaderEncodeReq {
+    scheme: String,
+    density: u8,
+    body_hex: String,
+    encrypted: bool,
+}
+
+#[derive(Serialize)]
+struct HeaderEncodeResp {
+    hex: String,
+    fields: Vec<HeaderField>,
+    body_len: u32,
+    body_crc32: u32,
+}
+
+#[derive(Serialize)]
+struct HeaderField {
+    name: &'static str,
+    offset: usize,
+    size: usize,
+    value: String,
+    note: &'static str,
+}
+
+async fn header_encode(Json(req): Json<HeaderEncodeReq>) -> Result<Json<HeaderEncodeResp>, (StatusCode, String)> {
+    let scheme = match req.scheme.as_str() {
+        "bmp-lsb-linear" => SchemeFourcc::BMP_LSB_LINEAR,
+        "bmp-lsb-permuted" => SchemeFourcc::BMP_LSB_PERMUTED,
+        "wav-lsb-linear" => SchemeFourcc::WAV_LSB_LINEAR,
+        "wav-lsb-permuted" => SchemeFourcc::WAV_LSB_PERMUTED,
+        "png-lsb-linear" => SchemeFourcc::PNG_LSB_LINEAR,
+        "png-lsb-permuted" => SchemeFourcc::PNG_LSB_PERMUTED,
+        other => return Err((StatusCode::BAD_REQUEST, format!("unknown scheme '{other}'"))),
+    };
+    let density = match req.density {
+        1 => Density::Low,
+        2 => Density::Moderate,
+        3 => Density::Aggressive3,
+        4 => Density::Aggressive4,
+        _ => return Err((StatusCode::BAD_REQUEST, "density must be 1..=4".into())),
+    };
+    let body = decode_hex(&req.body_hex)
+        .ok_or((StatusCode::BAD_REQUEST, "body_hex must be even-length hex".into()))?;
+    if body.len() > 1 << 20 {
+        return Err((StatusCode::BAD_REQUEST, "body too large (>1 MiB)".into()));
+    }
+
+    let mut hdr = PayloadHeader::plain(scheme, density, &body);
+    if req.encrypted {
+        hdr.flags |= PayloadHeader::FLAG_ENCRYPTED;
+        hdr.body_crc32 = 0;
+        hdr.crypto_fourcc = *b"XCA2";
+    }
+    let bytes = hdr.encode();
+
+    let fields = vec![
+        HeaderField { name: "magic",         offset: 0,  size: 4, value: "\"RSTG\"".into(),                                    note: "ASCII tag, never changes" },
+        HeaderField { name: "version",       offset: 4,  size: 1, value: format!("0x{:02x}", hdr.version),                     note: "wire version, current = 1" },
+        HeaderField { name: "flags",         offset: 5,  size: 1, value: format!("0x{:02x}", hdr.flags),                       note: "bit0 encrypted, bit1 compressed, bit2 permuted" },
+        HeaderField { name: "crypto_fourcc", offset: 6,  size: 4, value: ascii_or_hex(&hdr.crypto_fourcc),                      note: "AEAD scheme id; zero for plaintext" },
+        HeaderField { name: "scheme_fourcc", offset: 10, size: 4, value: ascii_or_hex(&hdr.scheme_fourcc.0),                    note: "carrier + walk order (BLSL, WLSP, …)" },
+        HeaderField { name: "density",       offset: 14, size: 1, value: format!("0x{:02x}", hdr.density),                      note: "bits used per sample, 1..=4" },
+        HeaderField { name: "reserved",      offset: 15, size: 1, value: "0x00".into(),                                         note: "must be zero on write, checked on read" },
+        HeaderField { name: "body_len",      offset: 16, size: 4, value: format!("{} (0x{:08x})", hdr.body_len, hdr.body_len),  note: "u32 big-endian length of body bytes" },
+        HeaderField { name: "body_crc32",    offset: 20, size: 4, value: format!("0x{:08x}", hdr.body_crc32),                   note: "CRC32-IEEE of plaintext body; zero when encrypted" },
+        HeaderField { name: "reserved",      offset: 24, size: 8, value: "0x00 × 8".into(),                                     note: "reserved-zero, preserves 32-byte frame" },
+    ];
+
+    Ok(Json(HeaderEncodeResp {
+        hex: encode_hex_upper(&bytes),
+        fields,
+        body_len: hdr.body_len,
+        body_crc32: hdr.body_crc32,
+    }))
+}
+
+fn encode_hex_upper(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02X}"));
+    }
+    s
+}
+
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Some(Vec::new());
+    }
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len()).step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
+}
+
+fn ascii_or_hex(fcc: &[u8; 4]) -> String {
+    if fcc.iter().all(|b| b.is_ascii_graphic()) {
+        format!("\"{}\"", std::str::from_utf8(fcc).unwrap_or("????"))
+    } else {
+        format!("0x{:02x}{:02x}{:02x}{:02x}", fcc[0], fcc[1], fcc[2], fcc[3])
+    }
 }
 
 // ---------------- Presets ----------------
