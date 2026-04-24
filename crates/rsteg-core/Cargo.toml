@@ -5,7 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Core traits and framing for rsteg — a minimal-dependency steganography toolkit."
+readme = "../../README.md"
+keywords = ["steganography", "stego", "lsb", "hiding", "crypto"]
+categories = ["encoding", "cryptography", "multimedia"]
 
 [lints]
 workspace = true

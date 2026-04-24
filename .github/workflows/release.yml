@@ -1,0 +1,85 @@
+# Release workflow — builds rsteg-cli for 5 targets on tag push and attaches
+# archives + SHA256SUMS to a GitHub Release. Hand-rolled; no cargo-dist.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin,         os: macos-14 }
+          - { target: x86_64-apple-darwin,          os: macos-13 }
+          - { target: aarch64-unknown-linux-gnu,    os: ubuntu-24.04-arm }
+          - { target: x86_64-unknown-linux-gnu,     os: ubuntu-latest }
+          - { target: x86_64-pc-windows-msvc,       os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release -p rsteg-cli --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE="rsteg-cli-${GITHUB_REF_NAME#v}-${{ matrix.target }}"
+          mkdir -p "dist/${STAGE}"
+          cp "target/${{ matrix.target }}/release/rsteg" README.md "dist/${STAGE}/"
+          cp LICENSE* "dist/${STAGE}/"
+          tar -C dist -czf "dist/${STAGE}.tar.gz" "${STAGE}"
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:VERSION = $env:GITHUB_REF_NAME -replace '^v',''
+          $env:TARGET  = '${{ matrix.target }}'
+          $stage = "rsteg-cli-$env:VERSION-$env:TARGET"
+          New-Item -ItemType Directory -Force -Path "dist/$stage" | Out-Null
+          Copy-Item "target/$env:TARGET/release/rsteg.exe" "dist/$stage/"
+          Copy-Item README.md "dist/$stage/"
+          Get-ChildItem -Filter 'LICENSE*' | Copy-Item -Destination "dist/$stage/"
+          Compress-Archive -Path "dist/$stage" -DestinationPath "dist/$stage.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsteg-cli-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: cd artifacts && sha256sum * > SHA256SUMS
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PRERELEASE=""
+          [[ "$GITHUB_REF_NAME" == *-* ]] && PRERELEASE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" --generate-notes $PRERELEASE ./artifacts/*

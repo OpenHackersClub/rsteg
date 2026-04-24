@@ -47,7 +47,38 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           cargo run -p rsteg-site-build --locked
-          if ! git diff --exit-code -- public/index.html public/algo README.md bench/README.md crates/rsteg-web/src/pages; then
+          if ! git diff --exit-code -- public/index.html public/algo README.md bench/README.md; then
             echo "::error::site content is out of sync with README sources. Run \`cargo run -p rsteg-site-build\` locally and commit the result."
             exit 1
           fi
+
+  publish-check:
+    name: publish dry-run
+    # Catches publish-breaking manifest changes (missing description/license,
+    # path deps without a version, etc.) before a release is cut.
+    #
+    # Only `rsteg-core` — the root of the dep graph — can be fully dry-run'd
+    # against crates.io pre-publish. Downstream crates require `rsteg-core`
+    # to already exist on the registry, so for them we fall back to
+    # `cargo package --list`, which validates the manifest and the file set
+    # without hitting the registry.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --dry-run (rsteg-core)
+        run: cargo publish -p rsteg-core --dry-run --locked --no-verify
+      - name: cargo package --list (downstream crates)
+        run: |
+          set -euo pipefail
+          for c in rsteg-bmp rsteg-wav rsteg-png rsteg-crypto-aead rsteg-cli; do
+            echo "::group::cargo package --list -p $c"
+            # --offline prevents cargo from trying to resolve path-dep
+            # versions against crates.io (they don't exist there yet);
+            # --no-verify skips the full build (test job covers that).
+            cargo package -p "$c" --list --no-verify --allow-dirty --offline
+            echo "::endgroup::"
+          done

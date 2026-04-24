@@ -5,10 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "BMP format adapter for rsteg."
+homepage.workspace = true
+description = "BMP format adapter for rsteg — LSB embedding in uncompressed BMP images."
+readme = "../../README.md"
+keywords = ["steganography", "stego", "lsb", "bmp", "image"]
+categories = ["encoding", "multimedia::images"]
 
 [lints]
 workspace = true
 
 [dependencies]
-rsteg-core = { path = "../rsteg-core" }
+rsteg-core = { path = "../rsteg-core", version = "=0.1.0" }
