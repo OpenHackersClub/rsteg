@@ -1,6 +1,11 @@
 ## Crypto
 
-A single crate: `rsteg-crypto`. Two features: `aead` (default, modern) and `compat-steghide` (read-only interop). They share `sha2`, `zeroize`, `getrandom`.
+**Implementation status:**
+
+- `rsteg-crypto-aead` — **shipped** in phase 1 (see `crates/rsteg-crypto-aead/`). Wire fourcc `b"XCA1"`, exported as `rsteg_crypto_aead::FOURCC`. Implements the `xchacha20-argon2id` scheme described below.
+- `rsteg-compat-steghide` — **TBD (phase 2).** Spec'd below; no crate under `crates/` yet. The "Compatibility: steghide" section from ### onwards should be read as the target design, not shipped API.
+
+The earlier design called for a single `rsteg-crypto` crate with two Cargo features. Phase 1 landed the AEAD path as a standalone crate (`rsteg-crypto-aead`); `compat-steghide` will ship as a separate crate (`rsteg-compat-steghide`) rather than a feature — matching the spec-01 "one adapter per crate" rule. Shared concerns (`sha2`, `zeroize`, `getrandom`) will come through workspace deps when the second crate lands.
 
 ### Default scheme: `xchacha20-argon2id` (`rsteg-crypto` feature `aead`)
 

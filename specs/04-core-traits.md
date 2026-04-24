@@ -92,6 +92,12 @@ pub trait FormatAdapter: Send + Sync + 'static {
 }
 
 // -- Detection ------------------------------------------------------------
+//
+// **Status:** TBD — this trait is not yet in `rsteg-core`. The `inspect` CLI
+// verb (spec 03) currently does a linear-probe magic-bytes check inline in
+// `rsteg-cli::run_inspect`; lifting that into the `Detector` framework below
+// is phase-1.5/phase-2 work. Until then, treat this section as the target
+// shape rather than as-shipped API.
 
 pub trait Detector: Send + Sync + 'static {
     fn id(&self) -> &'static str;
@@ -159,6 +165,10 @@ pub trait CryptoScheme: Send + Sync + 'static {
 pub struct EmbedOpts {
     pub scheme: Option<&'static str>,   // None => adapter default
     pub density: Density,
+    /// 64-bit PRNG seed for permuted schemes. `None` with a permuted scheme
+    /// is a caller bug — the adapter returns `Error::PermutationSeedRequired`.
+    /// For linear schemes, `seed` is ignored.
+    pub seed: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -167,6 +177,8 @@ pub struct ExtractOpts {
     pub density: Option<Density>,       // None => read from header
     pub skip_header: bool,              // true for --no-header raw reads
     pub raw_bit_count: Option<u64>,     // required when skip_header = true
+    /// Must match the writer's seed for permuted schemes; ignored for linear.
+    pub seed: Option<u64>,
 }
 
 /// Embedding density. Permitted values: Low(1), Moderate(2), Aggressive(3|4).
@@ -210,6 +222,13 @@ pub struct Capacity {
 }
 
 // -- Registry -------------------------------------------------------------
+//
+// **Status:** TBD as a type in `rsteg-core`. The registry exists today as
+// compile-time wiring in `rsteg-cli::build_registry()` via `#[cfg(feature)]`
+// blocks — pulling it into a first-class `Registry` struct would let library
+// consumers mint their own without reimplementing the feature-gated assembly.
+// Same for `Capacity` above: adapters return capacity via per-adapter helpers
+// rather than a shared `Capacity` struct. Phase 2.
 
 #[derive(Default)]
 pub struct Registry {
@@ -240,8 +259,11 @@ offset  size  field              notes
                                  bit3..7 reserved-must-be-zero
 6       4     crypto_fourcc      e.g. b"XCA1" (XChaCha20-Poly1305 + Argon2id v1);
                                  b"STGH" (steghide compat read); zeros if !encrypted
-10      4     scheme_fourcc      e.g. b"BLS1" (BMP LSB linear d=1),
-                                         b"BLSP" (BMP LSB permuted)
+10      4     scheme_fourcc      e.g. b"BLSL" (BMP LSB linear),
+                                         b"BLSP" (BMP LSB permuted),
+                                         b"WLSL"/b"WLSP" (WAV), b"PLSL"/b"PLSP" (PNG).
+                                 Full list in `rsteg_core::SchemeFourcc`. Density is
+                                 carried by the separate `density` byte, not the fourcc.
 14      1     density            1..=4
 15      1     reserved_1         must be zero
 16      4     body_len           BE u32, bytes of body (ciphertext if encrypted)
