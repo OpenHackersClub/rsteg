@@ -6,7 +6,8 @@
 #![deny(unsafe_code)]
 
 use rsteg_core::{
-    BitReader, BitWriter, Error, ExtractOpts, FormatAdapter, PayloadHeader, Density, EmbedOpts,
+    prng::{shuffle, Prng},
+    BitReader, BitWriter, Density, EmbedOpts, Error, ExtractOpts, FormatAdapter, PayloadHeader,
 };
 
 pub static BMP_ADAPTER: BmpAdapter = BmpAdapter;
@@ -98,24 +99,38 @@ fn pixel_byte_indices(width: u32, height: u32, stride: usize) -> Vec<usize> {
     out
 }
 
-fn embed_linear(
+/// Build the list of pixel-byte offsets; apply the PRNG shuffle for permuted.
+fn indices_for(
+    width: u32,
+    height: u32,
+    stride: usize,
+    permuted_seed: Option<u64>,
+) -> Vec<usize> {
+    let mut idxs = pixel_byte_indices(width, height, stride);
+    if let Some(seed) = permuted_seed {
+        let mut prng = Prng::new(seed);
+        shuffle(&mut prng, &mut idxs);
+    }
+    idxs
+}
+
+fn embed_scheme(
     carrier: &[u8],
     framed: &[u8],
     density: Density,
+    permuted_seed: Option<u64>,
     out: &mut Vec<u8>,
 ) -> Result<(), Error> {
     let layout = parse_bmp(carrier)?;
-    let row_bytes = 3
-        * u32::from_le_bytes(carrier[18..22].try_into().unwrap()) as usize;
-    let stride = (row_bytes + 3) & !3;
     let width = u32::from_le_bytes(carrier[18..22].try_into().unwrap());
     let height_signed = i32::from_le_bytes(carrier[22..26].try_into().unwrap());
     let height = height_signed.unsigned_abs();
+    let row_bytes = (width as usize) * 3;
+    let stride = (row_bytes + 3) & !3;
 
     let pixel_slice_start = layout.pixel_offset;
-    let pixel_slice_end = pixel_slice_start + layout.pixel_len;
 
-    let idxs = pixel_byte_indices(width, height, stride);
+    let idxs = indices_for(width, height, stride, permuted_seed);
     let needed_units = framed
         .len()
         .checked_mul(8)
@@ -126,19 +141,20 @@ fn embed_linear(
             available: idxs.len() as u64,
         })?;
     if needed_units > idxs.len() {
-        let available_bytes =
-            ((idxs.len() as u64) * u64::from(density.bits())) / 8;
+        let available_bytes = ((idxs.len() as u64) * u64::from(density.bits())) / 8;
         return Err(Error::PayloadTooLarge {
             needed: framed.len() as u64,
             available: available_bytes,
         });
     }
 
-    // Clone carrier, then modify in pixel region.
     out.clear();
     out.extend_from_slice(carrier);
 
-    // Scratch: a contiguous slice of just the *pixel* bytes (no padding).
+    // Scratch collects the pixel bytes at positions idxs[0], idxs[1], ... in
+    // that order, then the BitWriter fills them linearly. For the linear
+    // scheme idxs is already in file order; for permuted it's a shuffle of
+    // the same list.
     let mut scratch: Vec<u8> = idxs
         .iter()
         .map(|&i| out[pixel_slice_start + i])
@@ -157,19 +173,18 @@ fn embed_linear(
         })?;
     }
 
-    // Write scratch back into the pixel positions.
     for (n, &idx) in idxs.iter().enumerate() {
         out[pixel_slice_start + idx] = scratch[n];
     }
 
     debug_assert_eq!(out.len(), carrier.len());
-    let _ = pixel_slice_end; // suppress unused warning when debug_assert is off
     Ok(())
 }
 
-fn extract_linear(
+fn extract_scheme(
     stego: &[u8],
     density: Density,
+    permuted_seed: Option<u64>,
     out: &mut Vec<u8>,
 ) -> Result<(), Error> {
     let layout = parse_bmp(stego)?;
@@ -179,13 +194,12 @@ fn extract_linear(
     let row_bytes = (width as usize) * 3;
     let stride = (row_bytes + 3) & !3;
 
-    let idxs = pixel_byte_indices(width, height, stride);
+    let idxs = indices_for(width, height, stride, permuted_seed);
     let scratch: Vec<u8> = idxs
         .iter()
         .map(|&i| stego[layout.pixel_offset + i])
         .collect();
 
-    // Peek the header first so we know how many body bytes to read.
     if scratch.len() * usize::from(density.bits()) < PayloadHeader::SIZE * 8 {
         return Err(Error::PayloadTooLarge {
             needed: PayloadHeader::SIZE as u64,
@@ -217,7 +231,6 @@ fn extract_linear(
             .map_err(|()| Error::HeaderMissing)?;
     }
 
-    // Plaintext CRC validation (skipped when encrypted; AEAD catches tampering).
     if (header.flags & PayloadHeader::FLAG_ENCRYPTED) == 0 && body_len > 0 {
         let actual = rsteg_core::crc32_ieee(&out[body_start..]);
         if actual != header.body_crc32 {
@@ -244,13 +257,14 @@ impl FormatAdapter for BmpAdapter {
         out: &mut Vec<u8>,
     ) -> Result<(), Error> {
         match opts.scheme {
-            None | Some("bmp-lsb-linear") => embed_linear(carrier, framed, opts.density, out),
-            Some(other) => Err(Error::FormatUnsupported {
+            None | Some("bmp-lsb-linear") => embed_scheme(carrier, framed, opts.density, None, out),
+            Some("bmp-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                embed_scheme(carrier, framed, opts.density, Some(seed), out)
+            }
+            Some(_) => Err(Error::FormatUnsupported {
                 id: "bmp",
-                reason: match other {
-                    "bmp-lsb-permuted" => "permuted scheme not implemented yet",
-                    _ => "unknown scheme",
-                },
+                reason: "unknown scheme",
             }),
         }
     }
@@ -263,13 +277,14 @@ impl FormatAdapter for BmpAdapter {
     ) -> Result<(), Error> {
         let density = opts.density.unwrap_or(Density::Low);
         match opts.scheme {
-            None | Some("bmp-lsb-linear") => extract_linear(stego, density, out),
-            Some(other) => Err(Error::FormatUnsupported {
+            None | Some("bmp-lsb-linear") => extract_scheme(stego, density, None, out),
+            Some("bmp-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                extract_scheme(stego, density, Some(seed), out)
+            }
+            Some(_) => Err(Error::FormatUnsupported {
                 id: "bmp",
-                reason: match other {
-                    "bmp-lsb-permuted" => "permuted scheme not implemented yet",
-                    _ => "unknown scheme",
-                },
+                reason: "unknown scheme",
             }),
         }
     }

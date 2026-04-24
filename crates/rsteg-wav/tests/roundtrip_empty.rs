@@ -48,6 +48,7 @@ fn roundtrip_empty_payload_wav16_mono_linear_density_low() {
     let opts = EmbedOpts {
         scheme: Some("wav-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let stego = WAV_ADAPTER
         .embed(&cover, &framed, &opts)
@@ -69,6 +70,7 @@ fn roundtrip_empty_payload_wav16_mono_linear_density_low() {
                 density: Some(Density::Low),
                 skip_header: false,
                 raw_bit_count: None,
+                seed: None,
             },
         )
         .expect("extract should succeed");

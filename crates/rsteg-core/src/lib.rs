@@ -9,11 +9,13 @@ mod bits;
 mod crc32;
 mod error;
 mod header;
+pub mod prng;
 
 pub use bits::{BitReader, BitWriter};
 pub use crc32::crc32_ieee;
 pub use error::Error;
 pub use header::{PayloadHeader, SchemeFourcc};
+pub use prng::{shuffle, Prng};
 
 /// Embedding density — bits written per embedding unit.
 ///
@@ -57,6 +59,19 @@ pub struct EmbedOpts {
     /// Scheme id (e.g. `"bmp-lsb-linear"`). `None` picks the adapter default.
     pub scheme: Option<&'static str>,
     pub density: Density,
+    /// 64-bit PRNG seed for permuted schemes. `None` with a permuted scheme
+    /// is a caller bug — the adapter returns `Error::PermutationSeedRequired`.
+    pub seed: Option<u64>,
+}
+
+impl Default for EmbedOpts {
+    fn default() -> Self {
+        Self {
+            scheme: None,
+            density: Density::Low,
+            seed: None,
+        }
+    }
 }
 
 /// Extraction options.
@@ -69,6 +84,20 @@ pub struct ExtractOpts {
     pub skip_header: bool,
     /// Required when `skip_header` is `true`.
     pub raw_bit_count: Option<u64>,
+    /// Matches the writer's seed for permuted schemes.
+    pub seed: Option<u64>,
+}
+
+impl Default for ExtractOpts {
+    fn default() -> Self {
+        Self {
+            scheme: None,
+            density: None,
+            skip_header: false,
+            raw_bit_count: None,
+            seed: None,
+        }
+    }
 }
 
 /// Trait implemented by each carrier-format adapter.

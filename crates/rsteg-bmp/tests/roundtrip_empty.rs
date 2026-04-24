@@ -62,6 +62,7 @@ fn roundtrip_empty_payload_bmp24_linear_density_low() {
     let opts = EmbedOpts {
         scheme: Some("bmp-lsb-linear"),
         density: Density::Low,
+        seed: None,
     };
     let stego = BMP_ADAPTER
         .embed(&cover, &framed, &opts)
@@ -76,6 +77,7 @@ fn roundtrip_empty_payload_bmp24_linear_density_low() {
         density: Some(Density::Low),
         skip_header: false,
         raw_bit_count: None,
+        seed: None,
     };
     let extracted = BMP_ADAPTER
         .extract(&stego, &extract_opts)

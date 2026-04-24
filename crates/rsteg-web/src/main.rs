@@ -266,7 +266,7 @@ async fn embed_handler(mut mp: Multipart) -> Response {
         secret.as_bytes(),
     );
     let framed = header_struct.encode_with(secret.as_bytes());
-    let opts = EmbedOpts { scheme: Some("bmp-lsb-linear"), density };
+    let opts = EmbedOpts { scheme: Some("bmp-lsb-linear"), density, seed: None };
 
     match BMP_ADAPTER.embed(&cover, &framed, &opts) {
         Ok(stego) => (
@@ -330,6 +330,7 @@ async fn extract_handler(mut mp: Multipart) -> Response {
         density: Some(density),
         skip_header: false,
         raw_bit_count: None,
+        seed: None,
     };
     match BMP_ADAPTER.extract(&stego, &opts) {
         Ok(framed) => {
