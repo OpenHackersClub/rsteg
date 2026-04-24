@@ -32,6 +32,7 @@ statistically detectable).
 
 ## Install & run
 
+<!-- site:begin install -->
 ```sh
 # Build the CLI with default features (png + bmp + wav + crypto + compat-steghide).
 cargo build --workspace --release
@@ -44,6 +45,7 @@ cargo run -p rsteg-cli --release -- embed \
 cargo run -p rsteg-cli --release -- extract \
   --in stego.bmp --out recovered.txt --password -
 ```
+<!-- site:end install -->
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full set of workspace commands
 including the minimal `--no-default-features --features png` build
