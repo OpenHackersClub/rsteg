@@ -52,6 +52,21 @@ jobs:
           echo "public/ contents:"
           find public -type f | sort
 
+      - name: Ensure Cloudflare Pages project exists
+        # Idempotent bootstrap: skip if already present, create otherwise.
+        # Keeps the workflow self-sufficient so the first deploy after
+        # enabling Pages previews doesn't require a manual dashboard step.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if npx -y wrangler@3 pages project list 2>/dev/null | awk '{print $1}' | grep -qx rsteg; then
+            echo "Pages project 'rsteg' already exists."
+          else
+            echo "Pages project 'rsteg' not found; creating."
+            npx -y wrangler@3 pages project create rsteg --production-branch=main
+          fi
+
       - name: Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -60,8 +75,9 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # --branch=<non-production-branch> triggers a Cloudflare Pages
           # preview deployment at <branch>.rsteg.pages.dev. For main it
-          # deploys to production.
-          command: pages deploy public --project-name=rsteg --branch=${{ github.head_ref || github.ref_name }}
+          # deploys to production. --commit-dirty silences the warning
+          # about our staged public/algo/** files not being in git.
+          command: pages deploy public --project-name=rsteg --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
