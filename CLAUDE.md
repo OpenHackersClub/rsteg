@@ -2,54 +2,65 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project status: phase 0 (specification)
+## Project status: phase 1 (shipped)
 
-`rsteg` is a Rust steganography tool (library + CLI) targeting feature parity with `steghide` and `stegano-rs`. As of this commit there is **no Rust code yet** — the canonical source of truth is `specs/`. Always read `specs/README.md` first, then the numbered specs in order.
+`rsteg` is a Rust steganography tool (library + CLI) targeting feature parity with `steghide` and `stegano-rs`. Phase 1 is implemented: core, bmp, wav, png, crypto-aead (XChaCha20-Poly1305 + Argon2id), cli, bench, plus the dev-only demo site under `rsteg-web` + `rsteg-site-build`. Phase 2 is **spec'd but not yet coded** — `rsteg-compat-steghide` (spec 06) and `rsteg-jpeg` (spec 05) have no crate under `crates/` yet, and spec 04's `Detector`, `Registry`, and `Capacity` trait surface is partially implemented (the registry is wired compile-time in `rsteg-cli::build_registry`, but the full detection framework from spec 04 §"Detector" is TBD).
+
+Read `specs/README.md` first, then the numbered specs in order. When code and spec disagree, treat the code as current and open a PR that updates the spec; annotate unimplemented spec sections with `<!-- TBD (phase 2) -->` so future readers know what's pending.
 
 Key constraints that shape every decision:
 
-- **Supply-chain minimization.** Every direct and transitive dep is justified in [`specs/02-dependency-policy.md`](specs/02-dependency-policy.md). Budget: ≤ 25 transitive crates with default features; ≤ 2 with `--no-default-features --features png`. Adding a dep requires updating that spec in the same PR.
+- **Supply-chain minimization.** Every direct and transitive dep is justified in [`specs/02-dependency-policy.md`](specs/02-dependency-policy.md). Current reality (`cargo tree -p rsteg-cli`): ~35 transitive crates with default features (Argon2id + XChaCha20-Poly1305 stack dominates), 1 with `--no-default-features --features png`. The written spec-02 budget is what the project is managed against; adding a new direct dep requires a PR that updates that spec and re-runs the counts. Drift past ~40 needs a conscious decision.
 - **Plugin architecture via Cargo features, not dynamic loading.** Each format (PNG / BMP / WAV / JPEG) and crypto scheme is a separate crate gated by a feature. `rsteg-core` has zero runtime deps.
 - **`#![forbid(unsafe_code)]`** in every first-party crate.
-- **No proc-macro deps anywhere.** No `serde_derive`, `thiserror`, `async-trait`, `clap` (derive). Hand-rolled `Display`, `lexopt` for CLI.
+- **No proc-macro deps anywhere.** No `serde_derive`, `thiserror`, `async-trait`, `clap` (derive). Hand-rolled `Display`, `lexopt` for CLI. (The dev-only `rsteg-web` crate pulls serde-derive transitively via axum; that's outside the shipped supply-chain surface.)
 - **TDD discipline.** Red-green-refactor per feature. See [`specs/07-testing.md`](specs/07-testing.md). The commit cadence is: test commit (red) → implementation commit (green) → optional refactor commit.
 
-## Workspace layout (planned — not yet scaffolded)
+## Workspace layout (current)
 
 ```
 rsteg/
-  Cargo.toml                  # [workspace] only
+  Cargo.toml                  # [workspace]
   crates/
-    rsteg-core/               # Traits, Error, Registry, PayloadHeader — std only
+    rsteg-core/               # Traits, Error, PayloadHeader, Prng — std only
     rsteg-png/                # feat: png             (dep: miniz_oxide)
     rsteg-bmp/                # feat: bmp             (zero deps)
     rsteg-wav/                # feat: wav             (zero deps)
-    rsteg-jpeg/               # feat: jpeg            (phase 2)
-    rsteg-crypto-aead/        # feat: crypto          (RustCrypto chacha20poly1305 + pbkdf2 + sha2)
-    rsteg-compat-steghide/    # feat: compat-steghide (RustCrypto aes + cbc + sha2, read-only)
-    rsteg-cli/                # binary, uses lexopt
-    rsteg-bench/              # dev-only harness, publish = false
-  fuzz/                       # cargo-fuzz, dev-only
+    rsteg-crypto-aead/        # feat: crypto-aead     (RustCrypto chacha20poly1305 + argon2 + zeroize)
+    rsteg-cli/                # binary, uses lexopt — registers adapters at build-time
+    rsteg-bench/              # dev-only subprocess comparison harness, publish = false
+    rsteg-web/                # dev-only axum demo site, publish = false
+    rsteg-site-build/         # dev-only: render README.md fragments into public/*.html
+    # --- spec'd but not yet coded ---
+    rsteg-jpeg/                # feat: jpeg            (phase 2; spec 05)
+    rsteg-compat-steghide/     # feat: compat-steghide (phase 2, read-only; spec 06)
   corpus/                     # test fixtures (incl. real steghide files)
-  specs/                      # design docs
+  specs/                      # design docs — authoritative
+  public/                     # static site served by Cloudflare Pages
+  sample/                     # demo input images (Munch cover + payload)
+  bench/                      # bench reports
 ```
 
-Implementation order per [`specs/09-roadmap.md`](specs/09-roadmap.md): core → bmp → wav → crypto-aead → png → compat-steghide → cli → bench.
+Implementation order per [`specs/09-roadmap.md`](specs/09-roadmap.md): core → bmp → wav → crypto-aead → png → cli → bench (✅ all shipped) → compat-steghide → jpeg (phase 2).
 
 ## Commands
 
-Once the workspace exists, these are the canonical commands:
+These are the canonical commands for the current (phase-1) workspace.
 
 ```sh
-# Build / test default features (png+bmp+wav+crypto+compat-steghide)
+# Build / test default features (png + bmp + wav + crypto-aead)
 cargo build --workspace
 cargo test  --workspace
 
-# Minimal build — proves dep-budget claim
-cargo build --no-default-features --features png
-cargo tree  --no-default-features --features png --prefix none | sort -u | wc -l   # must be ≤ 2
+# Minimal build — proves the ≤ 2 transitive claim for a bmp-less, png-only,
+# crypto-free binary (currently reports 1 — just rsteg-core).
+cargo build -p rsteg-cli --no-default-features --features png
+cargo tree  -p rsteg-cli --no-default-features --features png --prefix none | sort -u | wc -l
 
-# All features incl. jpeg
+# Default-feature transitive count (currently ~35, bounded by the crypto stack).
+cargo tree -p rsteg-cli --prefix none | sort -u | wc -l
+
+# All features (compat-steghide and jpeg are spec'd; features gated but crates TBD).
 cargo build --all-features
 cargo test  --all-features
 
@@ -62,27 +73,31 @@ cargo test -p rsteg-core header::tests::decode_rejects_bad_magic
 # Supply-chain gate
 cargo deny check
 
-# Fuzzing (requires `cargo install cargo-fuzz`)
+# Fuzzing (requires `cargo install cargo-fuzz`; fuzz/ is TBD)
 cd fuzz && cargo fuzz run bmp_extract
 
-# Bench harness
+# Bench harness (subprocess comparison vs steghide + stegano-cli)
 cargo run -p rsteg-bench --release -- run --case bmp-small --tool all
 cargo run -p rsteg-bench --release -- run --all --format markdown
 
 # CLI smoke
 cargo run -p rsteg-cli --release -- embed --in cover.bmp --payload secret.txt --out stego.bmp --password -
 cargo run -p rsteg-cli --release -- extract --in stego.bmp --out recovered.txt --password -
-```
 
-Until the workspace is scaffolded, those commands will fail. If you're starting fresh, the first task in `TaskList` is "Scaffold workspace".
+# Site: re-render public/*.html from README.md + bench/README.md (idempotent).
+cargo run -p rsteg-site-build
+
+# Dev demo server (axum, localhost:3456)
+cargo run -p rsteg-web
+```
 
 ## Architecture cheat-sheet
 
-- `rsteg-core` defines `FormatAdapter`, `Detector`, `CryptoScheme` traits. Every other crate is an adapter.
+- `rsteg-core` defines `FormatAdapter` and `CryptoScheme` traits (spec 04's `Detector` / `Registry` / `Capacity` are spec'd but only partially surfaced in code — the registry lives as compile-time wiring in `rsteg-cli::build_registry`, not as a standalone `Registry` type). Every format and crypto scheme is an adapter crate.
 - Adapters are registered compile-time in `rsteg-cli::build_registry()` via `#[cfg(feature = "…")]` blocks. No `inventory`/`linkme` dep.
 - All embed/extract I/O is `&[u8]` in, `Vec<u8>` out. Core is pure; the CLI does all file I/O.
 - 32-byte `PayloadHeader` (`RSTG` magic + version + flags + crypto fourcc + scheme fourcc + density + body len + CRC32 + reserved) frames every write. See `crates/rsteg-core/src/header.rs` for the exact offsets. Detection on extract = looking for the magic in the first `160/density` embedding units.
-- Crypto default: `aead-chacha20` (ChaCha20-Poly1305 + PBKDF2-HMAC-SHA256 @ 600k iters). `compat-steghide` is detection + read only, never write.
+- Crypto default: `aead-chacha20` — XChaCha20-Poly1305 + Argon2id (m=64 MiB, t=3, p=1) — fourcc `b"XCA1"`, exposed as `rsteg_crypto_aead::FOURCC`. Earlier spec drafts mentioned PBKDF2-HMAC-SHA256 @ 600k iters; code switched to Argon2id during phase 1 (see `crates/rsteg-crypto-aead/src/lib.rs:3`). `compat-steghide` is spec'd as detection + read only (never write) but the crate is not yet implemented.
 
 See [`specs/01-architecture.md`](specs/01-architecture.md) and [`specs/04-core-traits.md`](specs/04-core-traits.md) for the full picture.
 

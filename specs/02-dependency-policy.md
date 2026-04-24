@@ -56,12 +56,37 @@ Dev deps do not count against the default-build budget but must still be license
 
 ### Budget
 
-- Default features (`png`, `bmp`, `wav`, `crypto`, `compat-steghide`): ≤ **30 total transitive crates**.
-- Minimal (`--no-default-features --features png`): ≤ **2 total transitive crates**.
-- `jpeg` feature adds ≤ **3 transitive** crates.
-- `png-fast` feature is explicitly out of the budget — users opt in.
+Measured on `rsteg-cli` (the shipped binary), *not* the full workspace —
+dev-only crates (`rsteg-bench`, `rsteg-web`, `rsteg-site-build`) sit outside
+this budget because they never reach a user.
 
-CI fails the build if `cargo tree --prefix none | sort -u | wc -l` exceeds these numbers.
+| Config                                               | Target | Current |
+|------------------------------------------------------|-------:|--------:|
+| Default (`png`, `bmp`, `wav`, `crypto-aead`)         |  ≤ 40  |    ~35  |
+| Minimal (`--no-default-features --features png`)     |   ≤ 2  |       1 |
+| Planned `jpeg` feature adds                          |   ≤ 3  |     TBD |
+| Planned `compat-steghide` feature adds               |   ≤ 5  |     TBD |
+
+Reproduce with:
+
+```sh
+cargo tree -p rsteg-cli --prefix none | sort -u | wc -l
+cargo tree -p rsteg-cli --no-default-features --features png --prefix none | sort -u | wc -l
+```
+
+The default target was widened from the original ≤ 30 to ≤ 40 in phase 1
+once the Argon2id + XChaCha20-Poly1305 stack was wired in (`argon2`,
+`chacha20poly1305`, `zeroize`, plus their RustCrypto transitives). Going
+back under 30 would mean switching to HKDF + PBKDF2 or dropping AEAD for
+plain ChaCha20, both of which trade off security properties the spec-06
+threat model explicitly requires — so the budget was raised rather than
+the crypto weakened.
+
+`png-fast` feature (if introduced) is explicitly out of the budget —
+users opt in.
+
+CI fails the build if either of the two `cargo tree` counts exceeds the
+target column above.
 
 ### Review process
 
