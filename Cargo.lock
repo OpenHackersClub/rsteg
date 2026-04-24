@@ -304,6 +304,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsteg-wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom",
+ "rsteg-bmp",
+ "rsteg-core",
+ "rsteg-crypto-aead",
+ "rsteg-png",
+ "rsteg-wav",
+]
+
+[[package]]
 name = "rsteg-wav"
 version = "0.1.0"
 dependencies = [

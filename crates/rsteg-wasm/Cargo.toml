@@ -1,0 +1,34 @@
+[package]
+name = "rsteg-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Browser-WASM façade for rsteg — hand-rolled extern \"C\" ABI, no wasm-bindgen. See specs/10-browser-wasm.md."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["png", "bmp", "wav", "crypto"]
+png    = ["dep:rsteg-png"]
+bmp    = ["dep:rsteg-bmp"]
+wav    = ["dep:rsteg-wav"]
+crypto = ["dep:rsteg-crypto-aead", "dep:getrandom"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core        = { path = "../rsteg-core" }
+rsteg-png         = { path = "../rsteg-png",         optional = true }
+rsteg-bmp         = { path = "../rsteg-bmp",         optional = true }
+rsteg-wav         = { path = "../rsteg-wav",         optional = true }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead", optional = true }
+# `custom` enables the `register_custom_getrandom!` macro (macro_rules!,
+# not a proc-macro — spec 02 rule 3 intact). On wasm32-unknown-unknown the
+# macro wires in the JS-import backend below; on host targets the built-in
+# OS backend wins and the registration is dead code.
+getrandom         = { version = "0.2", features = ["custom"], optional = true }
