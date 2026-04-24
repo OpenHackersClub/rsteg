@@ -1,0 +1,29 @@
+[package]
+name = "rsteg-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Browser-WASM façade for rsteg — hand-rolled extern \"C\" ABI, no wasm-bindgen. See specs/10-browser-wasm.md."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["png", "bmp", "wav", "crypto"]
+png    = ["dep:rsteg-png"]
+bmp    = ["dep:rsteg-bmp"]
+wav    = ["dep:rsteg-wav"]
+crypto = ["dep:rsteg-crypto-aead"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core        = { path = "../rsteg-core" }
+rsteg-png         = { path = "../rsteg-png",         optional = true }
+rsteg-bmp         = { path = "../rsteg-bmp",         optional = true }
+rsteg-wav         = { path = "../rsteg-wav",         optional = true }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead", optional = true }
