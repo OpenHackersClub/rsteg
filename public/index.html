@@ -121,12 +121,36 @@
     .summary .count.planned { color: var(--warn); }
     .summary .count.phase2  { color: var(--accent-2); }
     .summary .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .topnav .links { display: flex; gap: 14px; flex-wrap: wrap; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .links .sep { color: var(--border); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
   </style>
 </head>
 <body>
 
+<nav class="topnav">
+  <div class="links">
+    <a href="/" class="current">home</a>
+    <span class="sep">·</span>
+    <a href="/algo">algos</a>
+    <a href="/algo/lsb-linear">lsb-linear</a>
+    <a href="/algo/lsb-permuted">lsb-permuted</a>
+    <a href="/algo/payload-header">header</a>
+    <a href="/algo/aead">aead</a>
+  </div>
+</nav>
+
 <h1>rsteg</h1>
-<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#tracker">feature tracker</a> or <a href="#demo">run the demo locally</a>.</p>
+<p class="muted">A minimal-dependency steganography toolkit in Rust — library, CLI, and (soon) full format parity with <a href="https://www.kali.org/tools/steghide/" target="_blank" rel="noreferrer">steghide</a> and <a href="https://github.com/steganogram/stegano-rs" target="_blank" rel="noreferrer">stegano-rs</a>. Jump to the <a href="#tracker">feature tracker</a>, <a href="#demo">run the demo locally</a>, or read the <a href="/algo">algorithm explainers</a>.</p>
 
 <h2>What is steganography?</h2>
 <p>

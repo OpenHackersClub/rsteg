@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>rsteg — LSB permuted</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-2: #1b2230;
+      --border: #30363d;
+      --fg: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7ee787;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --danger: #ff7b72;
+      --code: #f85149;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 880px; margin: 0 auto; padding: 32px 24px 96px;
+    }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 {
+      margin: 0 0 4px; font-size: 34px; letter-spacing: -1px;
+      font-family: var(--mono); color: var(--accent);
+    }
+    h2 {
+      margin: 36px 0 10px; font-size: 20px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    h3 { margin: 22px 0 6px; font-size: 15px; color: var(--fg); }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 18px 20px; margin: 14px 0;
+    }
+    .kbd {
+      font-family: var(--mono); font-size: 12px; background: var(--panel-2);
+      padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    input[type="text"], input[type="number"] {
+      background: var(--panel-2); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 7px 9px;
+      font-family: var(--mono); font-size: 13px;
+    }
+    button {
+      background: var(--accent); color: #0d1117; border: 0; border-radius: 4px;
+      padding: 7px 14px; font-weight: 600; font-size: 13px; cursor: pointer;
+      font-family: inherit;
+    }
+    button.secondary {
+      background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+    }
+    button:hover { filter: brightness(1.1); }
+
+    .topnav {
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 13px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+    .topnav .links { display: flex; gap: 14px; }
+    .topnav .links a { color: var(--muted); }
+    .topnav .links a.current { color: var(--accent); }
+    .topnav .title { color: var(--muted); margin-left: auto; }
+    .topnav .title b { color: var(--fg); }
+
+    .vis-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 14px 0; }
+    .vis-wrap svg { width: 100%; height: auto; display: block; background: #0a0d12; border-radius: 6px; }
+    .controls {
+      display: flex; gap: 10px; align-items: center; margin: 10px 0 12px;
+      flex-wrap: wrap;
+    }
+    .controls label { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+    .controls input[type="text"] { width: 200px; }
+    .controls input[type="number"] { width: 80px; }
+    .status { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .status.err { color: var(--danger); }
+
+    .formula-line { display: flex; gap: 16px; align-items: baseline; margin: 3px 0; font-family: var(--mono); font-size: 12px; }
+    .formula-line code { color: var(--accent); }
+    .formula-line .note { color: var(--muted); font-size: 11px; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="links">
+    <a href="/">home</a>
+    <a href="/algo">algos</a>
+  </div>
+  <div class="title"><b>LSB permuted</b> <span class="muted">— scheme ?LSP</span></div>
+</nav>
+
+<h1>LSB permuted</h1>
+<p class="muted">
+  Same bit-flipping as <a href="/algo/lsb-linear">linear</a> — but instead of
+  walking cover bytes 0, 1, 2, 3 in order we visit them in a passphrase-seeded
+  pseudo-random order. The payload no longer occupies a contiguous prefix of
+  the carrier, which is the whole point.
+</p>
+
+<h2>Why linear order is a giveaway</h2>
+<p>
+  Steganalysis tools like <code>StegExpose</code> or an A/B chi-square on the
+  LSB plane ask a simple question: "does the distribution of 0s and 1s in this
+  fixed-size window look like natural image noise, or like a forced ~50/50
+  coin flip?" A natural cover has some bias per region (darker areas have
+  more 0s in the low bits, textured regions have more 1s, etc). A payload
+  overwriting consecutive LSBs forces that window to ~50/50 regardless.
+</p>
+<p>
+  With linear embedding, the <em>first</em> <code>framed_bits</code> samples
+  are the payload region and everything after is natural cover. Chi-square
+  with a sliding window lights up a bright line at the boundary. The detector
+  doesn't need to decrypt anything — it just reports "there's payload in this
+  prefix."
+</p>
+<p>
+  Permuting the walk order spreads the payload across the entire carrier. Every
+  local window now contains a proportional mix of payload bits and untouched
+  bits, so no single region reads as statistically forced. Across the whole
+  carrier the LSB distribution is the same as linear (~50/50 of payload bits);
+  the attacker just can't tell which bits are payload without the seed.
+</p>
+
+<h2>The seed is not the secret</h2>
+<p>
+  The permutation is <strong>defense-in-depth</strong>, not the confidentiality
+  story. In rsteg, the 64-bit SplitMix64 seed comes from the low 64 bits of the
+  Argon2id-derived key material (spec 06). An attacker who has the passphrase
+  has the key <em>and</em> the seed — but someone who only has the stego file
+  has neither.
+</p>
+<p>
+  The actual confidentiality bound is the AEAD: even if an attacker somehow
+  guessed the permutation, they'd still face XChaCha20-Poly1305 with a 256-bit
+  key derived via 64 MiB of Argon2id — which is what the
+  <a href="/algo/aead">AEAD page</a> is about.
+</p>
+
+<h2>Visualization — the walk over a 64-sample cover</h2>
+<p class="muted" style="font-size:13px">
+  Enter a 64-bit hex seed. The page posts to
+  <code>POST /api/algo/permutation</code>, the server runs
+  <code>SplitMix64 + Fisher–Yates</code> exactly as embed does, and returns the
+  visit order. Arrows connect step <em>i</em> to step <em>i+1</em> for the
+  first N steps. Try a few seeds: the first visits are wildly different, but
+  every run covers all 64 cells exactly once.
+</p>
+
+<div class="vis-wrap">
+  <div class="controls">
+    <label for="seed">seed (hex, ≤ 16 chars):</label>
+    <input type="text" id="seed" value="DEADBEEFCAFEBABE" spellcheck="false" autocomplete="off" />
+    <label for="steps">steps to draw:</label>
+    <input type="number" id="steps" value="16" min="1" max="64" />
+    <button id="redraw">redraw</button>
+    <button class="secondary" id="random-seed">random seed</button>
+  </div>
+
+  <svg id="grid" viewBox="0 0 560 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Permutation walk over 64 cells">
+    <defs>
+      <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7ee787"/>
+      </marker>
+    </defs>
+    <g id="cells"></g>
+    <g id="arrows"></g>
+    <g id="labels"></g>
+  </svg>
+
+  <div id="status" class="status">loading default seed…</div>
+</div>
+
+<h2>What SplitMix64 actually does</h2>
+<p>
+  SplitMix64 is a tiny splittable PRNG — ~10 lines of straight integer arithmetic,
+  no branches, no state bigger than a single <code>u64</code>. rsteg uses it
+  because it's deterministic across platforms, has no dependency footprint, and
+  is easily re-implementable from the spec. It is <em>not</em> cryptographic — a
+  few hundred consecutive outputs are enough to reconstruct the seed — but
+  that's fine: the seed's secrecy rides on the Argon2id key derivation above
+  it, not on SplitMix64.
+</p>
+<p>
+  From <code>crates/rsteg-core/src/prng.rs</code>:
+</p>
+<div class="panel">
+  <div class="formula-line">
+    <code>state = state.wrapping_add(0x9E3779B97F4A7C15);</code>
+    <span class="note">advance by golden-ratio constant (φ × 2⁶⁴)</span>
+  </div>
+  <div class="formula-line">
+    <code>z = state;</code>
+    <span class="note">snapshot for mixing</span>
+  </div>
+  <div class="formula-line">
+    <code>z = (z ^ (z &gt;&gt; 30)).wrapping_mul(0xBF58476D1CE4E5B9);</code>
+    <span class="note">bit-mix + multiply — diffuses high bits into low</span>
+  </div>
+  <div class="formula-line">
+    <code>z = (z ^ (z &gt;&gt; 27)).wrapping_mul(0x94D049BB133111EB);</code>
+    <span class="note">second mixing round</span>
+  </div>
+  <div class="formula-line">
+    <code>z ^ (z &gt;&gt; 31)</code>
+    <span class="note">final xor-shift — this is the emitted output</span>
+  </div>
+</div>
+<p class="muted" style="font-size:12px">
+  The two multiplicative constants come from Stafford's Mix13 — published
+  analysis showing they minimize bit-bias across their reachable period.
+  Period is 2⁶⁴: any 64-bit seed produces a cycle through all 2⁶⁴ states
+  before repeating.
+</p>
+
+<h2>Fisher–Yates using SplitMix64 as the index source</h2>
+<p>
+  Fisher–Yates is the canonical O(n) in-place uniform shuffle. For a slice
+  <code>indices</code> of length <em>n</em>:
+</p>
+<pre>for i in (1..n).rev() {
+    let j = prng.bounded(i + 1); // uniform in 0..=i
+    indices.swap(i, j);
+}</pre>
+<p>
+  Each iteration picks a target <em>j</em> uniformly from the unsorted prefix
+  <code>0..=i</code> and swaps it to position <em>i</em>. After <em>n</em>−1
+  iterations every position holds a uniformly-chosen cell.
+  <code>prng.bounded(n)</code> uses <a href="https://lemire.me/blog/2019/06/06/nearly-divisionless-random-integer-generation-on-various-systems/">Lemire's
+  fast-mod trick</a> to avoid modulo bias when <em>n</em> is not a power of
+  two — important: a biased shuffle would silently concentrate payload bits
+  in some positions more than others, giving the steganalyser exactly the
+  window it wanted.
+</p>
+
+<h2>Cross-link</h2>
+<p>
+  The <code>permuted</code> choice is recorded in bit 2 of the
+  <code>PayloadHeader.flags</code> field. Extract reads the flag, reconstructs
+  the seed from the same Argon2id stream, runs the same Fisher–Yates, and
+  reads LSBs in the visit order. See
+  <a href="/algo/payload-header">the PayloadHeader page</a>.
+</p>
+
+<script>
+  const seedEl = document.getElementById("seed");
+  const stepsEl = document.getElementById("steps");
+  const redrawBtn = document.getElementById("redraw");
+  const randomBtn = document.getElementById("random-seed");
+  const statusEl = document.getElementById("status");
+  const cellsG = document.getElementById("cells");
+  const arrowsG = document.getElementById("arrows");
+  const labelsG = document.getElementById("labels");
+
+  // 8x8 grid, each cell 60x60, 10px margin
+  const CELL = 60;
+  const PAD = 30;
+  function cellCenter(idx) {
+    const row = Math.floor(idx / 8);
+    const col = idx % 8;
+    return {
+      x: PAD + col * (CELL + 5) + CELL / 2,
+      y: PAD + row * (CELL + 5) + CELL / 2,
+    };
+  }
+
+  function drawGrid(order, nSteps) {
+    cellsG.innerHTML = "";
+    arrowsG.innerHTML = "";
+    labelsG.innerHTML = "";
+
+    // Base cells: all 64
+    for (let i = 0; i < 64; i++) {
+      const row = Math.floor(i / 8);
+      const col = i % 8;
+      const x = PAD + col * (CELL + 5);
+      const y = PAD + row * (CELL + 5);
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", x);
+      rect.setAttribute("y", y);
+      rect.setAttribute("width", CELL);
+      rect.setAttribute("height", CELL);
+      rect.setAttribute("rx", 3);
+      rect.setAttribute("fill", "#161b22");
+      rect.setAttribute("stroke", "#30363d");
+      cellsG.appendChild(rect);
+
+      // Cell index in top-left corner
+      const idx = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      idx.setAttribute("x", x + 4);
+      idx.setAttribute("y", y + 11);
+      idx.setAttribute("fill", "#8b949e");
+      idx.setAttribute("font-family", "ui-monospace, Menlo, monospace");
+      idx.setAttribute("font-size", "9");
+      idx.textContent = i;
+      cellsG.appendChild(idx);
+    }
+
+    // Highlight visited cells + draw arrows
+    const visitLimit = Math.min(nSteps, order.length);
+    for (let step = 0; step < visitLimit; step++) {
+      const ci = order[step];
+      const row = Math.floor(ci / 8);
+      const col = ci % 8;
+      const x = PAD + col * (CELL + 5);
+      const y = PAD + row * (CELL + 5);
+
+      // Color by step progression
+      const t = step / Math.max(1, visitLimit - 1);
+      const g = Math.floor(231 * (1 - t * 0.6));
+      const b = Math.floor(135 + t * 80);
+      const fill = `rgb(30, ${g}, ${b})`;
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", x);
+      rect.setAttribute("y", y);
+      rect.setAttribute("width", CELL);
+      rect.setAttribute("height", CELL);
+      rect.setAttribute("rx", 3);
+      rect.setAttribute("fill", fill);
+      rect.setAttribute("stroke", "#7ee787");
+      rect.setAttribute("stroke-width", "1.5");
+      rect.setAttribute("opacity", "0.75");
+      cellsG.appendChild(rect);
+
+      const idx = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      idx.setAttribute("x", x + 4);
+      idx.setAttribute("y", y + 11);
+      idx.setAttribute("fill", "#0d1117");
+      idx.setAttribute("font-family", "ui-monospace, Menlo, monospace");
+      idx.setAttribute("font-size", "9");
+      idx.textContent = ci;
+      cellsG.appendChild(idx);
+
+      // Step-number, centered
+      const sn = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      sn.setAttribute("x", x + CELL / 2);
+      sn.setAttribute("y", y + CELL / 2 + 6);
+      sn.setAttribute("fill", "#0d1117");
+      sn.setAttribute("text-anchor", "middle");
+      sn.setAttribute("font-family", "ui-monospace, Menlo, monospace");
+      sn.setAttribute("font-size", "16");
+      sn.setAttribute("font-weight", "700");
+      sn.textContent = step + 1;
+      labelsG.appendChild(sn);
+    }
+
+    // Arrows between consecutive visits
+    for (let step = 0; step < visitLimit - 1; step++) {
+      const a = cellCenter(order[step]);
+      const b = cellCenter(order[step + 1]);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", a.x);
+      line.setAttribute("y1", a.y);
+      line.setAttribute("x2", b.x);
+      line.setAttribute("y2", b.y);
+      line.setAttribute("stroke", "#7ee787");
+      line.setAttribute("stroke-width", "1.3");
+      line.setAttribute("opacity", "0.55");
+      line.setAttribute("marker-end", "url(#arrow2)");
+      arrowsG.appendChild(line);
+    }
+  }
+
+  async function fetchAndDraw() {
+    const seed = seedEl.value.trim();
+    let steps = parseInt(stepsEl.value, 10);
+    if (isNaN(steps) || steps < 1) steps = 1;
+    if (steps > 64) steps = 64;
+    stepsEl.value = steps;
+    statusEl.classList.remove("err");
+    statusEl.textContent = "fetching…";
+
+    try {
+      const r = await fetch("/api/algo/permutation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed_hex: seed, len: 64 }),
+      });
+      if (!r.ok) {
+        const body = await r.text();
+        statusEl.classList.add("err");
+        statusEl.textContent = "error: " + body;
+        return;
+      }
+      const j = await r.json();
+      drawGrid(j.order, steps);
+      const first = j.order.slice(0, steps).join(", ");
+      statusEl.textContent =
+        "seed = 0x" + j.seed +
+        " — first " + steps + " positions: [" + first + "]";
+    } catch (err) {
+      statusEl.classList.add("err");
+      statusEl.textContent = "fetch error: " + err.message;
+    }
+  }
+
+  // Debounce on input
+  let debTimer = null;
+  function debounced() {
+    clearTimeout(debTimer);
+    debTimer = setTimeout(fetchAndDraw, 200);
+  }
+  seedEl.addEventListener("input", debounced);
+  stepsEl.addEventListener("input", debounced);
+  redrawBtn.addEventListener("click", fetchAndDraw);
+  randomBtn.addEventListener("click", () => {
+    let hex = "";
+    const chars = "0123456789ABCDEF";
+    for (let i = 0; i < 16; i++) hex += chars[Math.floor(Math.random() * 16)];
+    seedEl.value = hex;
+    fetchAndDraw();
+  });
+
+  fetchAndDraw();
+</script>
+
+</body>
+</html>

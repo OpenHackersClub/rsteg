@@ -28,6 +28,9 @@ use chacha20poly1305::{
 use rsteg_core::{CryptoScheme, Error};
 use zeroize::Zeroizing;
 
+/// Wire identifier for this scheme in `PayloadHeader.crypto_fourcc`.
+pub const FOURCC: [u8; 4] = *b"XCA1";
+
 /// XChaCha20-Poly1305 + Argon2id AEAD.
 #[derive(Debug, Clone)]
 pub struct XChaCha20Argon2id {
@@ -117,7 +120,7 @@ impl CryptoScheme for XChaCha20Argon2id {
     }
 
     fn fourcc(&self) -> [u8; 4] {
-        *b"XCA1"
+        FOURCC
     }
 
     fn seal(&self, plaintext: &[u8], passphrase: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {

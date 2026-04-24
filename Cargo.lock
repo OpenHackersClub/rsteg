@@ -570,6 +570,7 @@ dependencies = [
  "axum",
  "rsteg-bmp",
  "rsteg-core",
+ "rsteg-crypto-aead",
  "serde",
  "tokio",
 ]
