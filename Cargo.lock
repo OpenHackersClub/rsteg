@@ -370,6 +370,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "lexopt"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803ec87c9cfb29b9d2633f20cba1f488db3fd53f2158b1024cbefb47ba05d413"
+
+[[package]]
 name = "libc"
 version = "0.2.185"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -495,10 +501,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
+name = "rsteg-bench"
+version = "0.1.0"
+dependencies = [
+ "lexopt",
+ "miniz_oxide",
+ "rsteg-bmp",
+ "rsteg-core",
+ "rsteg-crypto-aead",
+ "rsteg-png",
+ "rsteg-wav",
+]
+
+[[package]]
 name = "rsteg-bmp"
 version = "0.1.0"
 dependencies = [
  "rsteg-core",
+]
+
+[[package]]
+name = "rsteg-cli"
+version = "0.1.0"
+dependencies = [
+ "lexopt",
+ "miniz_oxide",
+ "rsteg-bmp",
+ "rsteg-core",
+ "rsteg-crypto-aead",
+ "rsteg-png",
+ "rsteg-wav",
 ]
 
 [[package]]

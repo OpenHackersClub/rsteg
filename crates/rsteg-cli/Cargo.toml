@@ -1,0 +1,26 @@
+[package]
+name = "rsteg-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line tool for rsteg."
+
+[[bin]]
+name = "rsteg"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+rsteg-core        = { path = "../rsteg-core" }
+rsteg-bmp         = { path = "../rsteg-bmp" }
+rsteg-wav         = { path = "../rsteg-wav" }
+rsteg-png         = { path = "../rsteg-png" }
+rsteg-crypto-aead = { path = "../rsteg-crypto-aead" }
+lexopt            = "0.3"
+
+[dev-dependencies]
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
