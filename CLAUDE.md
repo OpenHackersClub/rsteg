@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status: phase 1 (shipped)
 
-`rsteg` is a Rust steganography tool (library + CLI) targeting feature parity with `steghide` and `stegano-rs`. Phase 1 is implemented: core, bmp, wav, png, crypto-aead (XChaCha20-Poly1305 + Argon2id), cli, bench, plus the dev-only demo site under `rsteg-web` + `rsteg-site-build`. Phase 2 is **spec'd but not yet coded** — `rsteg-compat-steghide` (spec 06) and `rsteg-jpeg` (spec 05) have no crate under `crates/` yet, and spec 04's `Detector`, `Registry`, and `Capacity` trait surface is partially implemented (the registry is wired compile-time in `rsteg-cli::build_registry`, but the full detection framework from spec 04 §"Detector" is TBD).
+`rsteg` is a Rust steganography tool (library + CLI) targeting feature parity with `steghide` and `stegano-rs`. Phase 1 is implemented: core, bmp, wav, png, crypto-aead (XChaCha20-Poly1305 + Argon2id), cli, bench, plus `rsteg-site-build` which renders the static landing page from source READMEs. Phase 2 is **spec'd but not yet coded** — `rsteg-compat-steghide` (spec 06) and `rsteg-jpeg` (spec 05) have no crate under `crates/` yet, and spec 04's `Detector`, `Registry`, and `Capacity` trait surface is partially implemented (the registry is wired compile-time in `rsteg-cli::build_registry`, but the full detection framework from spec 04 §"Detector" is TBD). The browser-WASM façade (`rsteg-wasm`, spec 10) is in-progress on its own feature branch.
 
 Read `specs/README.md` first, then the numbered specs in order. When code and spec disagree, treat the code as current and open a PR that updates the spec; annotate unimplemented spec sections with `<!-- TBD (phase 2) -->` so future readers know what's pending.
 
@@ -13,7 +13,7 @@ Key constraints that shape every decision:
 - **Supply-chain minimization.** Every direct and transitive dep is justified in [`specs/02-dependency-policy.md`](specs/02-dependency-policy.md). Current reality (`cargo tree -p rsteg-cli`): ~35 transitive crates with default features (Argon2id + XChaCha20-Poly1305 stack dominates), 1 with `--no-default-features --features png`. The written spec-02 budget is what the project is managed against; adding a new direct dep requires a PR that updates that spec and re-runs the counts. Drift past ~40 needs a conscious decision.
 - **Plugin architecture via Cargo features, not dynamic loading.** Each format (PNG / BMP / WAV / JPEG) and crypto scheme is a separate crate gated by a feature. `rsteg-core` has zero runtime deps.
 - **`#![forbid(unsafe_code)]`** in every first-party crate.
-- **No proc-macro deps anywhere.** No `serde_derive`, `thiserror`, `async-trait`, `clap` (derive). Hand-rolled `Display`, `lexopt` for CLI. (The dev-only `rsteg-web` crate pulls serde-derive transitively via axum; that's outside the shipped supply-chain surface.)
+- **No proc-macro deps anywhere.** No `serde_derive`, `thiserror`, `async-trait`, `clap` (derive). Hand-rolled `Display`, `lexopt` for CLI.
 - **TDD discipline.** Red-green-refactor per feature. See [`specs/07-testing.md`](specs/07-testing.md). The commit cadence is: test commit (red) → implementation commit (green) → optional refactor commit.
 
 ## Workspace layout (current)
@@ -29,7 +29,6 @@ rsteg/
     rsteg-crypto-aead/        # feat: crypto-aead     (RustCrypto chacha20poly1305 + argon2 + zeroize)
     rsteg-cli/                # binary, uses lexopt — registers adapters at build-time
     rsteg-bench/              # dev-only subprocess comparison harness, publish = false
-    rsteg-web/                # dev-only axum demo site, publish = false
     rsteg-site-build/         # dev-only: render README.md fragments into public/*.html
     # --- spec'd but not yet coded ---
     rsteg-jpeg/                # feat: jpeg            (phase 2; spec 05)
@@ -87,8 +86,8 @@ cargo run -p rsteg-cli --release -- extract --in stego.bmp --out recovered.txt -
 # Site: re-render public/*.html from README.md + bench/README.md (idempotent).
 cargo run -p rsteg-site-build
 
-# Dev demo server (axum, localhost:3456)
-cargo run -p rsteg-web
+# Preview the deployed site locally (matches Cloudflare Pages byte-for-byte).
+python3 -m http.server --directory public 8787
 ```
 
 ## Architecture cheat-sheet

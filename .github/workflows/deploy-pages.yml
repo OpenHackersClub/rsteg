@@ -80,4 +80,4 @@ jobs:
           - Commit: \`$COMMIT_SHA\`
           - Pages: [/](${DEPLOY_URL}) · [/algo](${DEPLOY_URL}/algo) · [/algo/lsb-linear](${DEPLOY_URL}/algo/lsb-linear) · [/algo/lsb-permuted](${DEPLOY_URL}/algo/lsb-permuted) · [/algo/payload-header](${DEPLOY_URL}/algo/payload-header) · [/algo/aead](${DEPLOY_URL}/algo/aead)
 
-          Note: the \`/api/algo/*\` POST endpoints (permutation trace, header encoder) need the Rust backend and are not exercised by the static preview."
+          Note: the interactive widgets on \`/algo/lsb-permuted\` and \`/algo/payload-header\` are disabled on the static preview — they previously called the axum dev server which has been removed. They will return when \`rsteg-wasm\` can back them client-side (spec 10)."

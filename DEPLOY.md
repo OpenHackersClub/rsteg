@@ -1,13 +1,13 @@
 # Deploying the demo site
 
-The `rsteg` demo site is a static export of `crates/rsteg-web/src/index.html`,
-checked in at `public/index.html`. It's published to **Cloudflare Pages** via
-`.github/workflows/deploy-pages.yml` on every push to `main` (and on manual
-`workflow_dispatch`).
+The `rsteg` demo site lives at `public/` and is published to **Cloudflare Pages**
+via `.github/workflows/deploy-pages.yml` on every push to `main` (and on manual
+`workflow_dispatch`). Every PR gets a branch-preview URL posted as a comment.
 
-The axum server under `crates/rsteg-web/` — which serves the real interactive
-embed / extract / inspect demo against the Rust library — is the local-dev path
-only; it is not deployed.
+The site is static — plain HTML/CSS/JS, no backend. The live embed / extract
+widgets on `/algo/lsb-permuted` and `/algo/payload-header` are currently
+disabled; they'll return when `rsteg-wasm` (spec 10) can back them
+client-side.
 
 ## One-time setup
 
@@ -34,39 +34,37 @@ Before the first deploy succeeds, a maintainer must:
 
 ## What gets deployed
 
-`public/` is the deploy root. Currently it's a single `index.html` (inline CSS,
-inline JS, no external assets). Adding CSS/JS files later is fine — the
-workflow uploads the whole directory.
+`public/` is the deploy root:
 
-## Updating the site
+- `public/index.html` — landing page (inline CSS/JS, no external assets).
+- `public/algo/{index,lsb-linear,lsb-permuted,payload-header,aead}/index.html` —
+  algorithm explainer pages.
+- `public/benchmarks/` — benchmark results.
+- `public/sample/` — Munch-demo cover / stego / payload fixtures.
 
-The source of truth for content is `crates/rsteg-web/src/index.html`. When you
-edit that file, re-sync the static export:
+The workflow uploads the whole directory. Adding more static files is fine.
 
-- Copy it over to `public/index.html`, then
-- **Remove** the three `<div class="panel">` sections for Embed / Extract /
-  Inspect, and
-- **Remove** the bottom `<script>` that talks to `/api/*`.
+## Updating content
 
-Keep the feature-tracker matrix, its summary-count script, the explainer, the
-supply-chain posture, and the "how rsteg is built" sections — those all work
-offline against the local DOM.
-
-Verify locally with:
+The intro + LSB basics + bench headline prose is generated from source
+READMEs by `rsteg-site-build`:
 
 ```sh
-python3 -m http.server --directory public
-# visit http://127.0.0.1:8000/
+cargo run -p rsteg-site-build
 ```
 
-## Local preview of the full interactive demo
+…which splices marked sections into `public/index.html` and
+`public/benchmarks/index.html`. CI runs the same command and
+`git diff --exit-code` to assert READMEs and site are in sync.
+
+The algorithm explainer pages under `public/algo/*/index.html` are edited
+directly.
+
+## Local preview
 
 ```sh
-cargo run -p rsteg-web
-# open http://127.0.0.1:3456
+python3 -m http.server --directory public 8787
+# open http://127.0.0.1:8787/
 ```
 
-This boots the axum server with the preset gallery, upload slots, and real
-BMP round-trip against `rsteg-bmp` — the JSON APIs (`/api/embed`,
-`/api/extract`, `/api/inspect`, `/api/presets`, `/api/preset/:id`) that the
-static deploy deliberately omits.
+Matches the deployed artifact byte-for-byte.
