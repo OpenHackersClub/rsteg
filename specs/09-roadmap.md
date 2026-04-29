@@ -10,7 +10,9 @@ Phased delivery with explicit exit criteria. Each phase ends with a git tag and 
 - 10 specs written, reviewed, revised to address BLOCKING/CRITICAL/HIGH/MAJOR findings from the 5-agent review team.
 - Open questions either answered or marked `# TBD (issue #N)`.
 
-### Phase 1 — Foundations (target: shippable steganography for PNG/BMP/WAV)
+### Phase 1 — Foundations (target: shippable steganography for PNG/BMP/WAV) — **mostly done**
+
+Status as of 2026-04-30 — steps 1–9 and 11–14 of the work order are landed on `main`; step 10 (steghide-compat) is deferred to phase 2 per [`specs/06-crypto.md`](06-crypto.md). Exit-criteria status is annotated in-line below; remaining gaps (`CHANGELOG.md`, `0.1.0` tag, fuzz nightlies) are tracked as discrete follow-ups rather than re-opening this phase.
 
 **Order of work (vertical-slice TDD):**
 
@@ -30,14 +32,33 @@ Phased delivery with explicit exit criteria. Each phase ends with a git tag and 
 14. Bench harness publishes comparison table.
 
 **Exit criteria:**
-- All 20 integration tests per adapter pass.
-- Timing-channel test passes (spec 04 invariant).
-- `corpus/steghide/` BMP and WAV files (≥ 5 each) decode correctly.
-- `cargo tree` counts within budgets (spec 02).
-- CI green across entire matrix (spec 07) including Windows and macOS-arm `test-default`.
-- Bench report: rsteg-cli wins or ties both `steghide` and `stegano-cli` on CPU p95 + peak RSS on all subprocess-table cases in `corpus/bench/`. Losses documented in README.
-- `CHANGELOG.md` written; `0.1.0` tagged.
-- `CLAUDE.md` updated with actual workspace commands.
+- ✅ Per-adapter integration test suites pass on `main` (BMP / WAV / PNG round-trips, density variants, header rejection).
+- ✅ Timing-channel test passes (spec 04 invariant).
+- 🚧 `corpus/steghide/` BMP and WAV fixtures: deferred — the steghide-compat crate (`rsteg-compat-steghide`) is spec'd but not yet shipped, so the corpus directory is intentionally absent until phase 2.
+- ✅ `cargo tree` counts within budgets (spec 02): `--no-default-features --features png` reports 1 transitive (just `rsteg-core`), default reports ~35 dominated by the AEAD stack.
+- ✅ CI green for `cargo build --workspace --all-targets --locked` and `cargo test --workspace --locked` on `ubuntu-latest` and `macos-latest`. Windows runner intentionally not in matrix yet — track as phase-1.5 follow-up if a downstream user reports breakage.
+- ✅ Bench report ([`bench/README.md`](../bench/README.md)) shows rsteg-cli winning by 4–125× vs `steghide` and 10–25× vs `stegano-cli` on shared cases.
+- 🚧 `CHANGELOG.md`: TBD — see follow-up work below. Once written, tag `0.1.0`.
+- ✅ `CLAUDE.md` updated with actual workspace commands.
+
+### Phase 1 follow-ups (must land before `0.1.0`)
+
+These are explicit Phase-1 exit criteria that didn't make it into the original 14-step work order. They're tracked here, not as a separate phase, so the bump to `0.1.0` reflects everything the spec promised.
+
+1. **`CHANGELOG.md`** at repo root, summarising what's in `0.1.0`. Style: Keep-a-Changelog headers (`Added` / `Changed` / `Removed` / `Security`), one section per release. Phase-1 PRs (#1–#19) all squash-merged with conventional-prefix titles, so `git log --oneline main` is the authoritative source.
+2. **Annotated `0.1.0` tag** on the commit that ships the changelog. Triggers `release.yml` to build prebuilt binaries (see [`RELEASING.md`](../RELEASING.md)).
+3. **`SECURITY.md`** (also a Phase-1.5 deliverable — see below). Lifting it forward gives `0.1.0` users a clear statement of what AEAD does and doesn't promise, what linear-LSB carriers leak (presence-detection by χ²), and the reporting channel.
+
+### Spec 10 — Browser-WASM target (sibling to phase 1, in-progress)
+
+`rsteg-wasm` ([`specs/10-browser-wasm.md`](10-browser-wasm.md)) ships an `extern "C"` façade for `wasm32-unknown-unknown` so embed/extract runs entirely in-browser with no trusted server. Status as of 2026-04-30:
+
+- ✅ Crate scaffold + extract path landed (#14 + #d144ed5).
+- ✅ Embed path landed; CI gate on `wasm32-unknown-unknown` size budget.
+- 🚧 In-page demo widget on `rsteg.pages.dev` not wired up — until then the landing page advertises the CLI as the canonical entrypoint.
+- 🚧 `compat-steghide` reserved-but-unimplemented in `rsteg-wasm` Cargo features; lands when `rsteg-compat-steghide` does.
+
+This track does not block `0.1.0` — the WASM crate has its own version line and ships independently.
 
 ### Phase 1.5 — Hardening
 

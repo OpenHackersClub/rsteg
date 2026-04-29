@@ -34,7 +34,8 @@ statistically detectable).
 
 <!-- site:begin install -->
 ```sh
-# Build the CLI with default features (png + bmp + wav + crypto + compat-steghide).
+# Build the CLI with default features (bmp + wav + png + crypto-aead).
+# The phase-2 `compat-steghide` and `jpeg` crates are spec'd but not yet shipped.
 cargo build --workspace --release
 
 # Embed a payload into a BMP cover with a password-derived AEAD key.
