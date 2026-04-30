@@ -68,7 +68,7 @@ This track does not block `0.1.0` — the WASM crate has its own version line an
 - ✅ `fuzz/` scaffold in tree: nightly cargo-fuzz crate with `bmp_extract`, `wav_extract`, `png_extract`, `header_decode` targets, seed corpus, and a non-blocking nightly CI workflow (`.github/workflows/fuzz.yml`).
 - 🚧 `fuzz/corpus/` has ≥ 100 MB of seeds per target, captured from CI fuzz runs.
 - 🚧 No open panics, no open crashes, no known OOMs on any fuzz target across ≥ 1 week of clean nightly runs.
-- 🚧 2-hour soak on BMP and WAV + PNG shows RSS drift < 5% and variance < 20%.
+- 🚧 2-hour soak on BMP and WAV + PNG shows RSS drift < 5% and variance < 20%. (Harness shipped — `rsteg-bench soak`; first 2-hour run pending.)
 - ✅ `SECURITY.md` lifted forward into phase 1 (#22). Threat model, what AEAD guarantees, what linear schemes leak, reporting channel.
 - 🚧 `0.2.0` tagged.
 

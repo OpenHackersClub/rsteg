@@ -81,6 +81,12 @@ cd fuzz && cargo +nightly fuzz run bmp_extract -- -max_total_time=60
 cargo run -p rsteg-bench --release -- run --case bmp-small --tool all
 cargo run -p rsteg-bench --release -- run --all --format markdown
 
+# Soak harness — long-running stability test (phase-1.5 deliverable).
+# Mixes embed/extract/inspect over a 1-10 MB carrier pool with 5% malformed
+# inputs; reports RSS drift + coefficient-of-variation. Spec target: 2h.
+cargo run -p rsteg-bench --release -- soak --duration 30s
+cargo run -p rsteg-bench --release -- soak --duration 2h
+
 # CLI smoke
 cargo run -p rsteg-cli --release -- embed --in cover.bmp --payload secret.txt --out stego.bmp --password -
 cargo run -p rsteg-cli --release -- extract --in stego.bmp --out recovered.txt --password -

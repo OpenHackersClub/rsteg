@@ -19,6 +19,15 @@ is bumped together (see [`specs/09-roadmap.md`](specs/09-roadmap.md) §"Versioni
   every target for 10 minutes. Phase-1.5 deliverable per
   [`specs/07-testing.md`](specs/07-testing.md) §Fuzzing and
   [`specs/09-roadmap.md`](specs/09-roadmap.md) §Phase 1.5.
+- **`rsteg-bench soak`** — soak harness for long-running stability
+  testing of the format adapters. Mixes `embed` / `extract` / `inspect`
+  over a 1–10 MB carrier pool (BMP, WAV, PNG) via a Markov-ish chain,
+  with 5% deliberately malformed inputs to exercise error paths. Samples
+  RSS each iteration and reports drift, coefficient-of-variation, and op
+  counts. Pass thresholds match spec 07 §"Soak tests": drift &lt; 5%,
+  CV &lt; 20%, no unexpected errors. See [`bench/README.md`](bench/README.md).
+  Phase-1.5 deliverable; first 2-hour run on the long-soak schedule still
+  pending.
 
 ## [0.1.0] — Phase 1 foundations
 
@@ -87,7 +96,7 @@ with authenticated encryption.
 ### Known gaps tracked for follow-up
 
 - Fuzz scaffold landed post-`0.1.0` (see `[Unreleased]`); ≥ 1 week of clean nightly runs is a phase-1.5 exit criterion.
-- No 2-hour soak run on file. Phase 1.5 deliverable.
+- Soak harness shipped post-`0.1.0` (see `[Unreleased]`); first 2-hour run on file is a phase-1.5 exit criterion.
 - No Windows runner in CI matrix. Phase 1.5 follow-up if a downstream
   user reports breakage.
 - `compat-steghide` and `jpeg` adapters are spec'd (specs 05 and 06) but
