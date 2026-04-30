@@ -19,6 +19,30 @@ cargo run --release -p rsteg-bench -- --all --format markdown --out bench.md
 be built from source — Homebrew dropped the package in 2024 and there is
 no published arm64 build.
 
+## Soak harness
+
+Long-running stability test for the format adapters — phase-1.5 deliverable
+per [`specs/07-testing.md`](../specs/07-testing.md) §"Soak tests". Lives
+behind a `soak` subcommand on the same binary:
+
+```sh
+# 30-second smoke (defaults: 5% malformed inputs, deterministic seed)
+cargo run --release -p rsteg-bench -- soak --duration 30s
+
+# Spec target
+cargo run --release -p rsteg-bench -- soak --duration 2h
+```
+
+The harness mixes `embed` / `extract` / `inspect` over a pre-generated
+1–10 MB carrier pool (BMP, WAV, PNG) via a Markov-ish chain, samples RSS
+each iteration, and reports drift + coefficient-of-variation alongside
+op counts. Pass thresholds (spec 07): drift &lt; 5%, CV &lt; 20%, no
+unexpected errors. **Short runs (&lt; ~20 s) flag drift artifacts from
+allocator warmup** — under ~30 s of mixed work, by ~30 s the head/tail
+windows are far enough apart for steady-state to dominate.
+
+Exit code is `0` on pass, `1` on unexpected errors, `2` on bad arguments.
+
 ## Tools
 
 | Tool       | Version | Provenance                                                 |

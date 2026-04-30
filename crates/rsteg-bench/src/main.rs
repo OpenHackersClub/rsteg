@@ -17,7 +17,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 mod corpus;
+mod rss;
 mod rusage;
+mod soak;
 
 use rusage::rusage_delta;
 
@@ -25,6 +27,20 @@ const WARMUP: usize = 3;
 const MEASURED: usize = 11;
 
 fn main() {
+    // Subcommand dispatch on the first positional. Existing flags-only
+    // invocations (`rsteg-bench --case bmp-small ...`) keep working — we
+    // only branch when argv[1] is a known verb.
+    let mut argv = std::env::args();
+    let _exe = argv.next();
+    if let Some(first) = argv.next() {
+        if first == "soak" {
+            soak::run(argv.collect());
+            return;
+        }
+        // Anything else (e.g. legacy `run`) falls through to the bench flow,
+        // which already ignores unknown positionals via lexopt's `_ => {}`.
+    }
+
     let mut parser = lexopt::Parser::from_env();
     let mut case_filter: Option<String> = None;
     let mut format: String = "markdown".into();
