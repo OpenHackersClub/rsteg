@@ -65,11 +65,12 @@ This track does not block `0.1.0` — the WASM crate has its own version line an
 **Deliverable:** fuzz corpus stabilized; 1+ week of nightly fuzz runs clean; soak test passed; `SECURITY.md` published.
 
 **Exit criteria:**
-- `fuzz/corpus/` has ≥ 100 MB of seeds per target, captured from CI fuzz runs.
-- No open panics, no open crashes, no known OOMs on any fuzz target.
-- 2-hour soak on BMP and WAV + PNG shows RSS drift < 5% and variance < 20%.
-- `SECURITY.md`: threat model, what we guarantee (confidentiality via AEAD), what we don't (presence concealment in linear schemes, steghide-compat is read-only and uses weak primitives), reporting process.
-- `0.2.0` tagged.
+- ✅ `fuzz/` scaffold in tree: nightly cargo-fuzz crate with `bmp_extract`, `wav_extract`, `png_extract`, `header_decode` targets, seed corpus, and a non-blocking nightly CI workflow (`.github/workflows/fuzz.yml`).
+- 🚧 `fuzz/corpus/` has ≥ 100 MB of seeds per target, captured from CI fuzz runs.
+- 🚧 No open panics, no open crashes, no known OOMs on any fuzz target across ≥ 1 week of clean nightly runs.
+- 🚧 2-hour soak on BMP and WAV + PNG shows RSS drift < 5% and variance < 20%.
+- ✅ `SECURITY.md` lifted forward into phase 1 (#22). Threat model, what AEAD guarantees, what linear schemes leak, reporting channel.
+- 🚧 `0.2.0` tagged.
 
 ### Phase 2 — JPEG
 

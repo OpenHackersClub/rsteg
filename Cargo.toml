@@ -11,6 +11,10 @@ members = [
     "crates/rsteg-wasm",
     "crates/rsteg-site-build",
 ]
+# `fuzz/` is its own cargo-fuzz workspace (nightly-only, libfuzzer-sys dep).
+# Keeping it out of the main workspace prevents stable `cargo build --workspace`
+# from pulling libfuzzer-sys and from requiring `+nightly` for routine builds.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

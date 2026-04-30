@@ -1,0 +1,73 @@
+name: fuzz (nightly)
+
+# Phase-1.5 deliverable: 10-minute nightly run per fuzz target. Non-blocking —
+# this workflow doesn't gate PR merges. Spec'd in `specs/07-testing.md` §Fuzzing
+# and tracked as a phase-1.5 exit criterion in `specs/09-roadmap.md`.
+
+on:
+  schedule:
+    # 03:17 UTC daily — off-peak for the shared GHA pool, and offset from a
+    # round number so we don't collide with every other repo's cron.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: "Seconds per target (default 600 = 10 min)"
+        required: false
+        default: "600"
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  MAX_TOTAL_TIME: ${{ github.event.inputs.max_total_time || '600' }}
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Keep going even if one target finds a crash — we want all targets'
+      # results in the same nightly run.
+      fail-fast: false
+      matrix:
+        target:
+          - bmp_extract
+          - wav_extract
+          - png_extract
+          - header_decode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Per-target cache key — fuzz targets share the rsteg-* libs but
+          # each compiles its own bin, so a per-target key keeps LRU sane.
+          key: fuzz-${{ matrix.target }}
+          workspaces: fuzz
+
+      - name: install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: fuzz ${{ matrix.target }} for ${{ env.MAX_TOTAL_TIME }}s
+        working-directory: fuzz
+        run: |
+          set -euo pipefail
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            -- -max_total_time=${MAX_TOTAL_TIME}
+
+      - name: upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-crashes
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 30

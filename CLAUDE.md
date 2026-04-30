@@ -72,8 +72,10 @@ cargo test -p rsteg-core header::tests::decode_rejects_bad_magic
 # Supply-chain gate
 cargo deny check
 
-# Fuzzing (requires `cargo install cargo-fuzz`; fuzz/ is TBD)
-cd fuzz && cargo fuzz run bmp_extract
+# Fuzzing (requires `cargo install cargo-fuzz` + nightly toolchain).
+# fuzz/ is its own cargo-fuzz workspace, excluded from the main one.
+# Targets: bmp_extract, wav_extract, png_extract, header_decode.
+cd fuzz && cargo +nightly fuzz run bmp_extract -- -max_total_time=60
 
 # Bench harness (subprocess comparison vs steghide + stegano-cli)
 cargo run -p rsteg-bench --release -- run --case bmp-small --tool all

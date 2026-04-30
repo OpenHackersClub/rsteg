@@ -1,0 +1,5 @@
+target
+artifacts
+coverage
+# Corpus directories grow during fuzzing; check in only seed_* fixtures.
+corpus/*/[!s]*

@@ -12,6 +12,13 @@ is bumped together (see [`specs/09-roadmap.md`](specs/09-roadmap.md) §"Versioni
 ### Added
 
 - `CHANGELOG.md` (this file).
+- **`fuzz/`** — `cargo-fuzz` scaffold for the format adapters and the
+  `PayloadHeader` decoder. Targets: `bmp_extract`, `wav_extract`,
+  `png_extract`, `header_decode`. Seed corpus checked in for each target.
+  Non-blocking nightly CI workflow (`.github/workflows/fuzz.yml`) runs
+  every target for 10 minutes. Phase-1.5 deliverable per
+  [`specs/07-testing.md`](specs/07-testing.md) §Fuzzing and
+  [`specs/09-roadmap.md`](specs/09-roadmap.md) §Phase 1.5.
 
 ## [0.1.0] — Phase 1 foundations
 
@@ -79,7 +86,7 @@ with authenticated encryption.
 
 ### Known gaps tracked for follow-up
 
-- No fuzz nightlies yet; `fuzz/` directory is TBD.
+- Fuzz scaffold landed post-`0.1.0` (see `[Unreleased]`); ≥ 1 week of clean nightly runs is a phase-1.5 exit criterion.
 - No 2-hour soak run on file. Phase 1.5 deliverable.
 - No Windows runner in CI matrix. Phase 1.5 follow-up if a downstream
   user reports breakage.
