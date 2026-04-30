@@ -1,0 +1,47 @@
+[package]
+name = "rsteg-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# `cargo-fuzz` convention: the fuzz crate lives outside the main workspace,
+# pinned to nightly via `rust-toolchain.toml`, and depends on the local format
+# adapters by path. Targets call only public APIs — no first-party crate
+# loosens its visibility for fuzzing.
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rsteg-core = { path = "../crates/rsteg-core" }
+rsteg-bmp  = { path = "../crates/rsteg-bmp" }
+rsteg-wav  = { path = "../crates/rsteg-wav" }
+rsteg-png  = { path = "../crates/rsteg-png" }
+
+[[bin]]
+name = "bmp_extract"
+path = "fuzz_targets/bmp_extract.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "wav_extract"
+path = "fuzz_targets/wav_extract.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "png_extract"
+path = "fuzz_targets/png_extract.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "header_decode"
+path = "fuzz_targets/header_decode.rs"
+test = false
+doc = false
+bench = false
