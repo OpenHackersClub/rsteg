@@ -265,7 +265,8 @@ embedded 328443B into 2058477B carrier → 2166395B stego (328533 bytes framed)<
 
 <h2 id="install">Install</h2>
 <!-- site:begin install -->
-<pre><code class="language-sh"># Build the CLI with default features (png + bmp + wav + crypto + compat-steghide).
+<pre><code class="language-sh"># Build the CLI with default features (bmp + wav + png + crypto-aead).
+# The phase-2 `compat-steghide` and `jpeg` crates are spec'd but not yet shipped.
 cargo build --workspace --release
 
 # Embed a payload into a BMP cover with a password-derived AEAD key.
@@ -555,12 +556,13 @@ cargo run -p rsteg-cli --release -- extract \
   exactly one transitive dep (<code>miniz_oxide</code> for DEFLATE).
 </p>
 <pre>rsteg-cli
-  ├── rsteg-core                  (std only)
-  ├── rsteg-png        feat: png  (miniz_oxide)
-  ├── rsteg-bmp        feat: bmp  (zero deps)
-  ├── rsteg-wav        feat: wav  (zero deps)
-  ├── rsteg-jpeg       feat: jpeg (zune-jpeg, phase 2)
-  └── rsteg-crypto     feat: crypto + compat-steghide</pre>
+  ├── rsteg-core                              (std only)
+  ├── rsteg-png             feat: png         (miniz_oxide)
+  ├── rsteg-bmp             feat: bmp         (zero runtime deps)
+  ├── rsteg-wav             feat: wav         (zero runtime deps)
+  ├── rsteg-crypto-aead     feat: crypto-aead (chacha20poly1305 + argon2 + zeroize)
+  ├── rsteg-jpeg            feat: jpeg            (phase 2 — spec 05, not yet shipped)
+  └── rsteg-compat-steghide feat: compat-steghide (phase 2 — spec 06, not yet shipped)</pre>
 
 <h3>The 32-byte PayloadHeader</h3>
 <p>Every rsteg-written carrier starts its embedded bit-stream with a 32-byte frame:</p>
