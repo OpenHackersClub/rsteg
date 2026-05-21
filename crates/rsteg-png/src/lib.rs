@@ -10,6 +10,7 @@
 #![deny(unsafe_code)]
 
 use rsteg_core::{
+    prng::{shuffle, Prng},
     BitReader, BitWriter, Density, EmbedOpts, Error, ExtractOpts, FormatAdapter, PayloadHeader,
 };
 
@@ -165,10 +166,11 @@ fn parse_png(bytes: &[u8]) -> Result<PngState, Error> {
     }
 
     // Decompress IDAT via zlib.
-    let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&idat_cat).map_err(|_| Error::Malformed {
-        at: "png",
-        detail: "IDAT zlib inflate failed",
-    })?;
+    let raw =
+        miniz_oxide::inflate::decompress_to_vec_zlib(&idat_cat).map_err(|_| Error::Malformed {
+            at: "png",
+            detail: "IDAT zlib inflate failed",
+        })?;
 
     let channels = if color_type == 2 { 3 } else { 4 } as usize;
     let stride = width as usize * channels;
@@ -195,7 +197,12 @@ fn parse_png(bytes: &[u8]) -> Result<PngState, Error> {
 
 /// Undo per-row PNG filtering; return the raw pixel bytes (w*h*channels)
 /// and the original filter byte for each row.
-fn defilter(raw: &[u8], width: u32, height: u32, channels: usize) -> Result<(Vec<u8>, Vec<u8>), Error> {
+fn defilter(
+    raw: &[u8],
+    width: u32,
+    height: u32,
+    channels: usize,
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
     let stride = width as usize * channels;
     let mut filters = Vec::with_capacity(height as usize);
     let mut pixels = vec![0u8; stride * height as usize];
@@ -383,14 +390,28 @@ fn embedding_indices(state: &PngState) -> Vec<usize> {
     (0..state.pixels.len()).collect()
 }
 
-fn embed_linear(
+/// Build the embedding-unit index list; apply the PRNG shuffle for permuted.
+///
+/// Mirrors the `indices_for` helper in `rsteg-bmp` / `rsteg-wav`. Same seed
+/// → same permutation, so the reader reproduces the writer's order exactly.
+fn indices_for(state: &PngState, permuted_seed: Option<u64>) -> Vec<usize> {
+    let mut idxs = embedding_indices(state);
+    if let Some(seed) = permuted_seed {
+        let mut prng = Prng::new(seed);
+        shuffle(&mut prng, &mut idxs);
+    }
+    idxs
+}
+
+fn embed_scheme(
     carrier: &[u8],
     framed: &[u8],
     density: Density,
+    permuted_seed: Option<u64>,
     out: &mut Vec<u8>,
 ) -> Result<(), Error> {
     let mut state = parse_png(carrier)?;
-    let idxs = embedding_indices(&state);
+    let idxs = indices_for(&state, permuted_seed);
 
     let avail_bytes = (idxs.len() as u64 * u64::from(density.bits())) / 8;
     let needed_units = framed
@@ -409,7 +430,8 @@ fn embed_linear(
         });
     }
 
-    // Scratch — the pixel bytes in embedding order.
+    // Scratch — the pixel bytes in embedding order (file order for linear,
+    // shuffled for permuted). The BitWriter then fills them linearly.
     let mut scratch: Vec<u8> = idxs.iter().map(|&i| state.pixels[i]).collect();
     {
         let mut writer = BitWriter::new(&mut scratch, density.bits());
@@ -432,9 +454,14 @@ fn embed_linear(
     Ok(())
 }
 
-fn extract_linear(stego: &[u8], density: Density, out: &mut Vec<u8>) -> Result<(), Error> {
+fn extract_scheme(
+    stego: &[u8],
+    density: Density,
+    permuted_seed: Option<u64>,
+    out: &mut Vec<u8>,
+) -> Result<(), Error> {
     let state = parse_png(stego)?;
-    let idxs = embedding_indices(&state);
+    let idxs = indices_for(&state, permuted_seed);
     let scratch: Vec<u8> = idxs.iter().map(|&i| state.pixels[i]).collect();
 
     if scratch.len() * usize::from(density.bits()) < PayloadHeader::SIZE * 8 {
@@ -494,7 +521,11 @@ impl FormatAdapter for PngAdapter {
         out: &mut Vec<u8>,
     ) -> Result<(), Error> {
         match opts.scheme {
-            None | Some("png-lsb-linear") => embed_linear(carrier, framed, opts.density, out),
+            None | Some("png-lsb-linear") => embed_scheme(carrier, framed, opts.density, None, out),
+            Some("png-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                embed_scheme(carrier, framed, opts.density, Some(seed), out)
+            }
             Some(_) => Err(Error::FormatUnsupported {
                 id: "png",
                 reason: "unknown scheme",
@@ -510,7 +541,11 @@ impl FormatAdapter for PngAdapter {
     ) -> Result<(), Error> {
         let density = opts.density.unwrap_or(Density::Low);
         match opts.scheme {
-            None | Some("png-lsb-linear") => extract_linear(stego, density, out),
+            None | Some("png-lsb-linear") => extract_scheme(stego, density, None, out),
+            Some("png-lsb-permuted") => {
+                let seed = opts.seed.ok_or(Error::PermutationSeedRequired)?;
+                extract_scheme(stego, density, Some(seed), out)
+            }
             Some(_) => Err(Error::FormatUnsupported {
                 id: "png",
                 reason: "unknown scheme",
