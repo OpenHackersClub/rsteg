@@ -616,7 +616,7 @@ fn run_list(_args: Vec<std::ffi::OsString>) -> u8 {
     println!("schemes:");
     println!("  bmp-lsb-linear    bmp-lsb-permuted");
     println!("  wav-lsb-linear    wav-lsb-permuted");
-    println!("  png-lsb-linear    (permuted: pending phase 1)");
+    println!("  png-lsb-linear    png-lsb-permuted");
     println!("crypto:");
     println!("  xchacha20-argon2id  fourcc=XCA1 (default when --password)");
     EXIT_OK
@@ -674,7 +674,7 @@ fn default_permuted_scheme(fmt: &str) -> &'static str {
     match fmt {
         "bmp" => "bmp-lsb-permuted",
         "wav" => "wav-lsb-permuted",
-        "png" => "png-lsb-linear", // png permuted not in phase 1 yet
+        "png" => "png-lsb-permuted",
         _ => "bmp-lsb-permuted",
     }
 }
